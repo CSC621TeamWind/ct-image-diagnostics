@@ -24,7 +24,7 @@ int main(int, char *[]) {
   // read the DICOM image series and print out the number of slices.
   std::cout << "Reading the DICOM image directory : " << TEMP_DICOM_DATASET_DIR << std::endl;
   try {
-    utility::ReaderType::Pointer reader = utility::ReaderType::New();
+    ReaderType::Pointer reader = ReaderType::New();
     reader = utility::readDicomImageSeries(TEMP_DICOM_DATASET_DIR);
     typedef std::vector< std::string > FileNamesContainer;
     FileNamesContainer fileNames;
@@ -33,9 +33,9 @@ int main(int, char *[]) {
     std::cout << "Using the file:" << fileNames[fileNames.size()-TEMP_SEEDPOINT[2]] << std::endl;  // this seems to read the images backwards fileName[0] has the largest instead
 
     // Preparing the image for displaying the pointset.
-    utility::ImageType::Pointer image = reader->GetOutput();
-    const utility::ImageType::IndexType pixelIndex = { {TEMP_SEEDPOINT[0], TEMP_SEEDPOINT[1], TEMP_SEEDPOINT[2]} };
-    utility::ImageType::PixelType pixelValue = image->GetPixel(pixelIndex);
+    ImageType3D::Pointer image = reader->GetOutput();
+    const ImageType3D::IndexType pixelIndex = { {TEMP_SEEDPOINT[0], TEMP_SEEDPOINT[1], TEMP_SEEDPOINT[2]} };
+    ImageType3D::PixelType pixelValue = image->GetPixel(pixelIndex);
 
     // Generating a PointSet for the initial spherical MSM.
     PointSetType::Pointer  spherePointSet = PointSetType::New();
@@ -55,9 +55,9 @@ int main(int, char *[]) {
     int zFactor = -(M / 2);
     // Generate the spherical mass points model.
     for (int m = 1; m <= M; m++) {
-  	  std::cout << "Processing slice no: " << m + 1 << std::endl;
+  	  std::cout << "Processing slice no: " << m << std::endl;
   	  for (int n = 1; n <= N; n++) {
-            // (x, y, z) = (sin(Pi * m/M) cos(2Pi * n/N), sin(Pi * m/M) sin(2Pi * n/N), cos(Pi * m/M))
+          // (x, y, z) = (sin(Pi * m/M) cos(2Pi * n/N), sin(Pi * m/M) sin(2Pi * n/N), cos(Pi * m/M))
   		  PointType pSphere;
 
   		  pSphere[0] = seedPoint[0] + ( radius * (sin(itk::Math::pi * (float)m / M) * cos(2 * itk::Math::pi * (float)n / N)));  // x
@@ -68,7 +68,7 @@ int main(int, char *[]) {
   		  spherePointSet->SetPoint(++spherePointSetID, pSphere);
   		  
   		  // Set the point data
-  		  spherePointSet->SetPointData(spherePointSetID, 255);
+  		  spherePointSet->SetPointData(spherePointSetID, 255);  // All points are white for now.
 
   		  // Printing out the point generated.
   		  std::cout << "(" << pSphere[0] << ", " << pSphere[1] << ", " << pSphere[2] << ")" << std::endl;
@@ -78,7 +78,14 @@ int main(int, char *[]) {
   	  }
       zFactor++; // Z refers to the index of the axial slice within the dataset.
       std::cout << std::endl;
+
     }
+	// extracting the 2d slice of interest from the 3d image. 
+	ImageType2D::Pointer image2d = utility::extract2DImageSlice(image, 2, fileNames.size() - TEMP_SEEDPOINT[2]);
+
+	// displaying the 2D slice.
+	std::cout << "Displaying the file:" << fileNames[fileNames.size() - TEMP_SEEDPOINT[2]] << std::endl;
+	utility::display2DImage(image2d);
   }
   catch (itk::ExceptionObject &ex) {
     std::cout << "The program encountered an exception: " << ex << std::endl;
