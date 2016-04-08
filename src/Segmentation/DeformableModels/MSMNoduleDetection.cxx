@@ -55,37 +55,37 @@ int main(int, char *[]) {
     int zFactor = -(M / 2);
     // Generate the spherical mass points model.
     for (int m = 1; m <= M; m++) {
-  	  std::cout << "Processing slice no: " << m << std::endl;
-  	  for (int n = 1; n <= N; n++) {
+      std::cout << "Processing slice no: " << m << std::endl;
+      for (int n = 1; n <= N; n++) {
           // (x, y, z) = (sin(Pi * m/M) cos(2Pi * n/N), sin(Pi * m/M) sin(2Pi * n/N), cos(Pi * m/M))
-  		  PointType pSphere;
+        PointType pSphere;
 
-  		  pSphere[0] = seedPoint[0] + ( radius * (sin(itk::Math::pi * (float)m / M) * cos(2 * itk::Math::pi * (float)n / N)));  // x
-  		  pSphere[1] = seedPoint[1] + ( radius * (sin(itk::Math::pi * (float)m / M) * sin(2 * itk::Math::pi * (float)n / N)));; // y 
-  		  pSphere[2] = seedPoint[2] + zFactor;  // radius * cos(itk::Math::pi * (float)m / M); // z
+        pSphere[0] = seedPoint[0] + ( radius * (sin(itk::Math::pi * (float)m / M) * cos(2 * itk::Math::pi * (float)n / N)));  // x
+        pSphere[1] = seedPoint[1] + ( radius * (sin(itk::Math::pi * (float)m / M) * sin(2 * itk::Math::pi * (float)n / N)));; // y 
+        pSphere[2] = seedPoint[2] + zFactor;  // radius * cos(itk::Math::pi * (float)m / M); // z
 
-  		  // Set the point location
-  		  spherePointSet->SetPoint(++spherePointSetID, pSphere);
-  		  
-  		  // Set the point data
-  		  spherePointSet->SetPointData(spherePointSetID, 255);  // All points are white for now.
+        // Set the point location
+        spherePointSet->SetPoint(++spherePointSetID, pSphere);
+        
+        // Set the point data
+        spherePointSet->SetPointData(spherePointSetID, 255);  // All points are white for now.
 
-  		  // Printing out the point generated.
-  		  std::cout << "(" << pSphere[0] << ", " << pSphere[1] << ", " << pSphere[2] << ")" << std::endl;
+        // Printing out the point generated.
+        std::cout << "(" << pSphere[0] << ", " << pSphere[1] << ", " << pSphere[2] << ")" << std::endl;
 
         // Setting the pixel value.
         image->SetPixel(pixelIndex, 255);
-  	  }
+      }
       zFactor++; // Z refers to the index of the axial slice within the dataset.
       std::cout << std::endl;
 
     }
-	// extracting the 2d slice of interest from the 3d image. 
-	ImageType2D::Pointer image2d = utility::extract2DImageSlice(image, 2, fileNames.size() - TEMP_SEEDPOINT[2]);
+  // extracting the 2d slice of interest from the 3d image. 
+  ImageType2D::Pointer image2d = utility::extract2DImageSlice(image, 2, fileNames.size() - TEMP_SEEDPOINT[2]);
 
-	// displaying the 2D slice.
-	std::cout << "Displaying the file:" << fileNames[fileNames.size() - TEMP_SEEDPOINT[2]] << std::endl;
-	utility::display2DImage(image2d);
+  // displaying the 2D slice.
+  std::cout << "Displaying the file:" << fileNames[fileNames.size() - TEMP_SEEDPOINT[2]] << std::endl;
+  utility::display2DImage(image2d);
   }
   catch (itk::ExceptionObject &ex) {
     std::cout << "The program encountered an exception: " << ex << std::endl;
