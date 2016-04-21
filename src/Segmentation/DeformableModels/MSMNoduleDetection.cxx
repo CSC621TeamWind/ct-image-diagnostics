@@ -2,6 +2,7 @@
 #include "itkPointSet.h"
 #include "itkPointSetToImageFilter.h"
 #include "itkImage.h"
+#include "itkGradientMagnitudeImageFilter.h"
 #include "utilFunctions.hxx" 
 
 /*
@@ -12,7 +13,7 @@ To be integrated into the segmentation framework to use with different datasets.
 // Temporarily using this dataset with a hardcoded seedpoint and radius.
 const std::string TEMP_DICOM_DATASET_DIR = "../../../../../datasets/Cornell/SS0016/SS0016-20000101/SS0016/20000101-094600-0-2";
 const int TEMP_NODULE_RADUIS = 40;  // the temporary radius of the nodule in question in pixels.
-const int TEMP_SEEDPOINT[] = { 112, 229, 83};  // the center point of the nodule detected through preprocessing.
+const int TEMP_SEEDPOINT[] = { 112, 229, 83 };  // the center point of the nodule detected through preprocessing.
 const int TEMP_NODULE_SLICES = 22;  // number of image slices over which the nodule is present.
 const int TEMP_n = 10;  // number of mass points per image slice.
 
@@ -80,12 +81,35 @@ int main(int, char *[]) {
       std::cout << std::endl;
 
     }
-  // extracting the 2d slice of interest from the 3d image. 
-  ImageType2D::Pointer image2d = utility::extract2DImageSlice(image, 2, fileNames.size() - TEMP_SEEDPOINT[2]);
+    // extracting the 2d slice of interest from the 3d image. 
+    ImageType2D::Pointer image2d = utility::extract2DImageSlice(image, 2, fileNames.size() - TEMP_SEEDPOINT[2]);
 
-  // displaying the 2D slice.
-  std::cout << "Displaying the file:" << fileNames[fileNames.size() - TEMP_SEEDPOINT[2]] << std::endl;
-  utility::display2DImage(image2d);
+    // displaying the 2D slice.
+    std::cout << "Displaying the file:" << fileNames[fileNames.size() - TEMP_SEEDPOINT[2]] << std::endl;
+    utility::display2DImage(image2d);
+
+    // Displaying the spherePointSet
+    /*const unsigned int Dimension2 = 2;
+    typedef itk::Image<unsigned char, Dimension2> BinaryImageType;
+    typedef itk::PointSetToImageFilter<PointSetType, BinaryImageType> PointSetToImageFilterType;
+    PointSetToImageFilterType::Pointer pointSetToImageFilter = PointSetToImageFilterType::New();
+    pointSetToImageFilter->SetInput(spherePointSet);
+    pointSetToImageFilter->SetSpacing()
+    pointSetToImageFilter->Update();
+    ImageType2D::Pointer outputImage = pointSetToImageFilter->GetOutput();
+    utility::display2DImage(outputImage);*/
+
+    // Calculating the external forces.
+    // Finding the mangitude of the gradient of the image.
+    typedef itk::Image< unsigned char, 2 >  UnsignedCharImageType;
+    typedef itk::Image< float, 2 >   FloatImageType;
+    typedef itk::GradientMagnitudeImageFilter<ImageType2D, ImageType2D >  filterType;
+    filterType::Pointer gradientFilter = filterType::New();
+    gradientFilter->SetInput(image2d);
+    gradientFilter->Update();
+    std::cout << "Finding the magnitude of the image gradient:" << std::endl;
+    utility::display2DImage(gradientFilter->GetOutput());
+
   }
   catch (itk::ExceptionObject &ex) {
     std::cout << "The program encountered an exception: " << ex << std::endl;
