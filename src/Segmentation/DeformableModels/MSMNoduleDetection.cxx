@@ -15,7 +15,7 @@ const std::string TEMP_DICOM_DATASET_DIR = "../../../../../datasets/Cornell/SS00
 const int TEMP_NODULE_RADUIS = 40;  // the temporary radius of the nodule in question in pixels.
 const int TEMP_SEEDPOINT[] = { 112, 229, 83 };  // the center point of the nodule detected through preprocessing.
 const int TEMP_NODULE_SLICES = 22;  // number of image slices over which the nodule is present.
-const int TEMP_n = 10;  // number of mass points per image slice.
+const int TEMP_n = 15;  // number of mass points per image slice.
 
 int main(int, char *[]) {
 
@@ -51,6 +51,13 @@ int main(int, char *[]) {
     seedPoint[1] = TEMP_SEEDPOINT[1];
     seedPoint[2] = TEMP_SEEDPOINT[2];
 
+	// Finding the size of the image.
+	// Extracting the 2d slice of interest from the 3d image and finding its dimensions. 
+	ImageType2D::Pointer image2d = utility::extract2DImageSlice(image, 2, fileNames.size() - seedPoint[2]);
+	ImageType2D::SizeType imageSize = image2d->GetLargestPossibleRegion().GetSize();
+	int imageWidth = imageSize[0];
+	int imageHeight = imageSize[1];
+	
     // Set the initial point ID
     int spherePointSetID = 0;
     int zFactor = -(M / 2);
@@ -74,30 +81,33 @@ int main(int, char *[]) {
         // Printing out the point generated.
         std::cout << "(" << pSphere[0] << ", " << pSphere[1] << ", " << pSphere[2] << ")" << std::endl;
 
+		// Draw the seed point.
+		ImageType3D::IndexType pixelIndexSeed;
+		pixelIndexSeed[0] = seedPoint[0];
+		pixelIndexSeed[1] = imageHeight - seedPoint[1];  // The seedpoint given seems to be the point from bottom left
+		pixelIndexSeed[2] = fileNames.size() - pSphere[2]; 
+		image->SetPixel(pixelIndexSeed, 255);
+
+		// Draw the sphere point.
+		ImageType3D::IndexType pixelIndexSpherePoint;
+		pixelIndexSpherePoint[0] = pSphere[0];
+		pixelIndexSpherePoint[1] = imageHeight - pSphere[1];
+		pixelIndexSpherePoint[2] = fileNames.size() - pSphere[2];
+
         // Setting the pixel value.
-        image->SetPixel(pixelIndex, 255);
+        image->SetPixel(pixelIndexSpherePoint, 255);
       }
       zFactor++; // Z refers to the index of the axial slice within the dataset.
       std::cout << std::endl;
 
     }
-    // extracting the 2d slice of interest from the 3d image. 
-    ImageType2D::Pointer image2d = utility::extract2DImageSlice(image, 2, fileNames.size() - TEMP_SEEDPOINT[2]);
+
+	// Extracting the slice with the largest radius containing the mass points.
+	image2d = utility::extract2DImageSlice(image, 2, fileNames.size() - seedPoint[2]);
 
     // displaying the 2D slice.
     std::cout << "Displaying the file:" << fileNames[fileNames.size() - TEMP_SEEDPOINT[2]] << std::endl;
     utility::display2DImage(image2d);
-
-    // Displaying the spherePointSet
-    /*const unsigned int Dimension2 = 2;
-    typedef itk::Image<unsigned char, Dimension2> BinaryImageType;
-    typedef itk::PointSetToImageFilter<PointSetType, BinaryImageType> PointSetToImageFilterType;
-    PointSetToImageFilterType::Pointer pointSetToImageFilter = PointSetToImageFilterType::New();
-    pointSetToImageFilter->SetInput(spherePointSet);
-    pointSetToImageFilter->SetSpacing()
-    pointSetToImageFilter->Update();
-    ImageType2D::Pointer outputImage = pointSetToImageFilter->GetOutput();
-    utility::display2DImage(outputImage);*/
 
     // Calculating the external forces.
     // Finding the mangitude of the gradient of the image.
@@ -108,7 +118,15 @@ int main(int, char *[]) {
     gradientFilter->SetInput(image2d);
     gradientFilter->Update();
     std::cout << "Finding the magnitude of the image gradient:" << std::endl;
-    utility::display2DImage(gradientFilter->GetOutput());
+    utility::display2DImage(gradientFilter->GetOutput());  // Displaying the gradient magnitude image
+
+	// Test printing the values of a line after calculating its gradient magnitude.
+	for (int j = 0; j < imageWidth; j++) {
+		const ImageType2D::IndexType pixelIndex2D = { { j, 20 } };
+		ImageType2D::PixelType pixelValue2D = gradientFilter->GetOutput()->GetPixel(pixelIndex2D);
+		std::cout << pixelValue2D << "  ";
+	}
+
 
   }
   catch (itk::ExceptionObject &ex) {
