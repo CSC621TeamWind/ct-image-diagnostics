@@ -135,7 +135,7 @@ namespace utility {
   }
   */
 
-  void CreateImage(ImageType2D::Pointer image, PointSetType::Pointer pointSet)
+  void CreateImage(ImageType2D::Pointer image)
   {
 	  // Create a black image with a white square
 	  ImageType2D::IndexType start;
