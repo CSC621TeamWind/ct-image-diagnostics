@@ -17,6 +17,8 @@
 #include "itkImageSliceConstIteratorWithIndex.h"
 #include <itkBinaryFillholeImageFilter.h>
 #include "itkSliceBySliceImageFilter.h"
+#include "itkAndImageFilter.h"
+#include "itkBinaryFunctorImageFilter.h"
 
 using std::cout;
 using std::cerr;
@@ -33,7 +35,29 @@ using itk::Object;
 using itk::Statistics::ImageToHistogramFilter;
 using itk::BinaryThresholdImageFilter;
 using itk::SliceBySliceImageFilter;
+using itk::BinaryFunctorImageFilter;
+using itk::ExceptionObject;
 
+/**
+ * Simple boolean operator to combine the mask of air with the torso mask
+ */
+template <typename TPixel>
+class LungTorsoSegment
+{
+public:
+    ~LungTorsoSegment() {}
+
+    bool operator!=(const LungTorsoSegment &) const { return false; }
+
+    bool operator==(const LungTorsoSegment & other) const { return !( *this != other ); }
+
+    inline TPixel operator()(const TPixel & A, const TPixel & B) const
+    { return static_cast<TPixel>((!A) && B); }
+};
+
+/**
+ * Calculate the optimal image threshold based on a histogram
+ */
 template <typename THistogram>
 class OptimalThresholdCalculator : public HistogramAlgorithmBase<THistogram>
 {
@@ -131,7 +155,7 @@ protected:
         os << indent << "Threshold: " << threshold << endl;
     }
 
-    private:
+private:
     MeasurementType threshold;
     MeasurementType max_error;
     OutputType m_Output;
@@ -141,31 +165,32 @@ protected:
 };
 
 template <typename TImage>
-class ThresholdingNoduleDetection {
+class SegmentedLungFilter {
 public:
-    typedef typename TImage::Pointer ImagePointer;
-    typedef ImageToHistogramFilter<TImage> HistogramFilterType;
-    typedef typename HistogramFilterType::HistogramType HistogramType;
-    typedef typename HistogramFilterType::Pointer HistogramFilterPointer;
-    typedef typename HistogramFilterType::HistogramSizeType HistogramSizeType;
-    typedef typename HistogramFilterType::HistogramMeasurementType HistogramMeasurementType;
-    typedef OptimalThresholdCalculator<HistogramType> ThresholdCalculatorType;
+    typedef typename TImage::Pointer InputImagePointer;
 
     typedef unsigned char SegmentedImagePixelType;
     typedef itk::Image< SegmentedImagePixelType, 3 > SegmentedImageType;
     typedef SegmentedImageType::Pointer SegmentedImagePointer;
+
     typedef BinaryThresholdImageFilter<TImage, SegmentedImageType> BinaryImageFilter;
-    typedef typename BinaryImageFilter::Pointer BinaryImageFilterPointer;
+    typedef BinaryImageFilter AirFleshSegmentedImage;
+    typedef typename AirFleshSegmentedImage::Pointer AirFleshSegmentedImagePointer;
 
-    typedef itk::Image< SegmentedImagePixelType, 2 > SegmentedSliceType;
+    typedef itk::Image< SegmentedImagePixelType, 2 > SegmentedSliceImage;
 
-    typedef itk::BinaryFillHoleImageFilter<SegmentedImageType> HoleFillingFilter;
-	typedef SliceBySliceImageFilter<BinaryImageFilter, SegmentedImageType> SegmentedSliceFilter;
+    SegmentedLungFilter(InputImagePointer image): image(image) { }
 
-    ThresholdingNoduleDetection(ImagePointer image) {
-        this->image = image;
-    }
-    void initial_lung_segmentation() {
+    typedef ImageToHistogramFilter<TImage> HistogramFilterType;
+    typedef typename HistogramFilterType::HistogramType HistogramType;
+    typedef typename HistogramType::Pointer HistogramPointer;
+    typedef typename HistogramFilterType::Pointer HistogramFilterPointer;
+    typedef typename HistogramFilterType::HistogramSizeType HistogramSizeType;
+    typedef typename HistogramFilterType::HistogramMeasurementType HistogramMeasurementType;
+    /**
+     * Get histogram of input image
+     */
+    HistogramPointer getHistogram() {
         HistogramFilterPointer filter = HistogramFilterType::New();
 
         HistogramSizeType size(1);
@@ -177,39 +202,110 @@ public:
         filter->SetMarginalScale(10); // FIXME: parameter
         filter->Update();
 
-        const HistogramType * histogram = filter->GetOutput();
+        return filter->GetOutput();
+    }
 
-        // 1000 HU = Air (recommended initial guess from paper)
+    typedef OptimalThresholdCalculator<HistogramType> ThresholdCalculatorType;
+    /**
+     * Segment air from flesh using an optimal threshold algorithm
+     */
+    AirFleshSegmentedImagePointer segmentAirFromFlesh() {
+        HistogramPointer histogram = getHistogram();
+
         ThresholdCalculatorType thresholdCalculator(1000);
-
-        //TODO: ImageThresholdFilter
-
-        thresholdCalculator->SetInput(histogram); // FIXME
+        thresholdCalculator->SetInput(histogram);
         thresholdCalculator->Compute();
+
         HistogramMeasurementType threshold = thresholdCalculator->GetThreshold();
 
-        BinaryImageFilterPointer air = BinaryImageFilter::New();
-        air->SetInput(image);
-        air->SetLowerThreshold(threshold);
+        AirFleshSegmentedImagePointer flesh = BinaryImageFilter::New();
+        flesh->SetInput(image);
+        flesh->SetLowerThreshold(threshold);
 
-		typename SegmentedSliceFilter::Pointer slices = SegmentedSliceFilter::New();
+        return flesh;
+    }
 
-		typename HoleFillingFilter::Pointer holeFiller = HoleFillingFilter::New();
-		slices->SetFilter(holeFiller);
-		slices->SetInput(air);
+    // FIXME: Triple-check this
+    typedef itk::BinaryFillholeImageFilter<SegmentedSliceImage> HoleFillingFilter;
+    typedef SliceBySliceImageFilter<BinaryImageFilter, SegmentedImageType, HoleFillingFilter> SegmentedSliceFilter;
+    typedef typename SegmentedSliceFilter::Pointer SegmentedSliceFilterPointer;
+    typedef SegmentedImageType TorsoSegmentedImage;
+    typedef typename TorsoSegmentedImage::Pointer TorsoSegmentedImagePointer;
 
-		typename SegmentedImageType::Pointer lungs = slices->GetOutput();
+    /**
+     * Uses a hole filling algorithm to segment the entire torso
+     */
+    TorsoSegmentedImagePointer segmentTorso(AirFleshSegmentedImagePointer flesh) {
+        SegmentedSliceFilterPointer slices = SegmentedSliceFilter::New();
 
+        TorsoSegmentedImagePointer torso = HoleFillingFilter::New();
+        slices->SetFilter(torso);
+        slices->SetInput(flesh);
+
+        // FIXME: 3d-connected labeling to isolate torso (may not be necessary)
+
+        return torso;
+    }
+
+    typedef BinaryFunctorImageFilter<AirFleshSegmentedImage, TorsoSegmentedImage, LungTorsoSegment<SegmentedImagePixelType>, SegmentedImageType> InitialLungsSegmentedImage;
+    typedef typename InitialLungsSegmentedImage::Pointer InitialLungsSegmentedImagePointer;
+
+    /**
+     * Segment lungs by taking the intersection between air and the torso
+     */
+    InitialLungsSegmentedImagePointer segmentLungsInitial(AirFleshSegmentedImagePointer air, TorsoSegmentedImagePointer torso) {
+        InitialLungsSegmentedImagePointer initialLungs = InitialLungsSegmentedImage::New();
+
+        initialLungs->SetInput1(air);
+        initialLungs->SetInput2(torso);
+        initialLungs->Update(); // FIXME: don't need to update... right?
+
+        return initialLungs;
+    }
+
+    typedef HoleFillingFilter FinalLungsSegmentedImage;
+    typedef typename FinalLungsSegmentedImage::Pointer FinalLungsSegmentedImagePointer;
+
+    /**
+     * Calculate the final lung mask from the initial mask
+     */
+    FinalLungsSegmentedImagePointer segmentLungs(InitialLungsSegmentedImagePointer initialLungs) {
+        FinalLungsSegmentedImagePointer lungs = FinalLungsSegmentedImage::New();
+
+        SegmentedSliceFilterPointer slices = SegmentedSliceFilter::New();
+
+        slices->SetFilter(lungs);
+        slices->SetInput(initialLungs);
+
+        return lungs;
+    }
+
+    FinalLungsSegmentedImagePointer segmentLungs() {
+        // p.16
+        // Segment flesh, this mask is true where there is flesh (!M_i in paper)
+        AirFleshSegmentedImagePointer flesh = segmentAirFromFlesh();
+
+        // Fill holes in the flesh mask to obtain the torso mask
+        // body mask in paper (M_b)
+        TorsoSegmentedImagePointer torso = segmentTorso(flesh);
+
+        // Get the intersection between the torso and the air masks to obtain initial lung mask
+        // Called secondary lung mask in paper (M_s)
+        InitialLungsSegmentedImagePointer initialLungs = segmentLungsInitial(flesh, torso);
+
+        // Fill holes in the initial lung mask to obtain the final lung mask
+        FinalLungsSegmentedImagePointer lungs = segmentLungs(initialLungs); 
+
+        return lungs;
     }
 protected:
-    ImagePointer image;
-    //Histogram histogram;
+    InputImagePointer image;
 };
 
 
 int usage(char * prog) {
-        cerr << "Usage: " << prog << " DICOM_DIR" << endl;
-        return -1;
+    cerr << "Usage: " << prog << " DICOM_DIR" << endl;
+    return -1;
 }
 
 int main(int argc, char ** argv) {
@@ -238,8 +334,8 @@ int main(int argc, char ** argv) {
 
 
     }
-    catch (itk::ExceptionObject &ex) {
-        std::cout << "The program encountered an exception: " << ex << std::endl;
+    catch (ExceptionObject &ex) {
+        cerr << "The program encountered an exception: " << ex << endl;
         return EXIT_FAILURE;
     }
     return EXIT_SUCCESS;
