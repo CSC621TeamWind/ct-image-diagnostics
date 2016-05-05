@@ -3,8 +3,10 @@
 #include "itkPointSetToImageFilter.h"
 #include "itkImage.h"
 #include "itkGradientMagnitudeImageFilter.h"
+#include "itkGradientImageFilter.h"
 #include "utilFunctions.hxx" 
-
+#include "itkVectorIndexSelectionCastImageFilter.h"
+#include "math.h"
 /*
 Detection of nodules using stable mass-spring models.
 To be integrated into the segmentation framework to use with different datasets.
@@ -15,12 +17,24 @@ const std::string TEMP_DICOM_DATASET_DIR = "../../../../../datasets/Cornell/SS00
 const int TEMP_NODULE_RADUIS = 40;  // the temporary radius of the nodule in question in pixels.
 const int TEMP_SEEDPOINT[] = { 112, 229, 83 };  // the center point of the nodule detected through preprocessing.
 const int TEMP_NODULE_SLICES = 22;  // number of image slices over which the nodule is present.
-const int TEMP_n = 15;  // number of mass points per image slice.
+const int TEMP_n = 20;  // number of mass points per image slice.
+
+float standard_deviation(float data[], int n)
+{
+	float mean = 0.0, sum_deviation = 0.0;
+	int i;
+	for (i = 0; i<n; ++i)
+	{
+		mean += data[i];
+	}
+	mean = mean / n;
+	for (i = 0; i<n; ++i)
+		sum_deviation += (data[i] - mean)*(data[i] - mean);
+	return sqrt(sum_deviation / n);
+}
 
 int main(int, char *[]) {
 
-  typedef unsigned short PixelType;
-  typedef itk::PointSet< PixelType, 3 > PointSetType;
 
   // read the DICOM image series and print out the number of slices.
   std::cout << "Reading the DICOM image directory : " << TEMP_DICOM_DATASET_DIR << std::endl;
@@ -74,12 +88,12 @@ int main(int, char *[]) {
 
         // Set the point location
         spherePointSet->SetPoint(++spherePointSetID, pSphere);
-        
+
         // Set the point data
         spherePointSet->SetPointData(spherePointSetID, 255);  // All points are white for now.
 
         // Printing out the point generated.
-        std::cout << "(" << pSphere[0] << ", " << pSphere[1] << ", " << pSphere[2] << ")" << std::endl;
+        std::cout << "ID: "<< spherePointSetID << "(" << pSphere[0] << ", " << pSphere[1] << ", " << pSphere[2] << ")" << std::endl;
 
 		// Draw the seed point.
 		ImageType3D::IndexType pixelIndexSeed;
@@ -95,7 +109,7 @@ int main(int, char *[]) {
 		pixelIndexSpherePoint[2] = fileNames.size() - pSphere[2];
 
         // Setting the pixel value.
-        image->SetPixel(pixelIndexSpherePoint, 255);
+        //image->SetPixel(pixelIndexSpherePoint, 255);
       }
       zFactor++; // Z refers to the index of the axial slice within the dataset.
       std::cout << std::endl;
@@ -108,7 +122,7 @@ int main(int, char *[]) {
     // displaying the 2D slice.
     std::cout << "Displaying the file:" << fileNames[fileNames.size() - TEMP_SEEDPOINT[2]] << std::endl;
     utility::display2DImage(image2d);
-
+	
     // Calculating the external forces.
     // Finding the mangitude of the gradient of the image.
     typedef itk::Image< unsigned char, 2 >  UnsignedCharImageType;
@@ -121,13 +135,160 @@ int main(int, char *[]) {
     utility::display2DImage(gradientFilter->GetOutput());  // Displaying the gradient magnitude image
 
 	// Test printing the values of a line after calculating its gradient magnitude.
-	for (int j = 0; j < imageWidth; j++) {
+	/*for (int j = 0; j < imageWidth; j++) {
 		const ImageType2D::IndexType pixelIndex2D = { { j, 20 } };
 		ImageType2D::PixelType pixelValue2D = gradientFilter->GetOutput()->GetPixel(pixelIndex2D);
 		std::cout << pixelValue2D << "  ";
+	}*/
+
+
+
+	//for extracting a scalar from the vector image
+	typedef float       OutputPixelTypeImage;
+	typedef float       ComponentType;
+	typedef  itk::CovariantVector<ComponentType, 2> OutputPixelType;
+	typedef  itk::Image <OutputPixelType, 2> NewOutputImageType;
+	typedef  itk::VectorIndexSelectionCastImageFilter<NewOutputImageType, ImageType2D> SelectionFilterType; // < intputType , outputType
+
+		// Testing the gradient filter.
+	typedef float OperatorType;
+	typedef itk::GradientImageFilter<ImageType2D, OperatorType, OperatorType, NewOutputImageType> gradientImageFilterType;
+
+	gradientImageFilterType::Pointer gradientPointer = gradientImageFilterType::New();
+	gradientPointer->SetInput(image2d);
+	gradientPointer->SetUseImageSpacingOff();
+	gradientPointer->Update();
+
+	SelectionFilterType::Pointer componentExtractor_x = SelectionFilterType::New();
+	SelectionFilterType::Pointer componentExtractor_y = SelectionFilterType::New();
+
+	componentExtractor_x->SetIndex(0);// x component of the gradient
+	componentExtractor_y->SetIndex(1);// y component of the gradient
+
+	componentExtractor_x->SetInput(gradientPointer->GetOutput());
+	componentExtractor_y->SetInput(gradientPointer->GetOutput());
+
+	componentExtractor_x->Update();
+	componentExtractor_y->Update();
+
+	std::cout << " The gradient is ......" << std::endl;
+	// Test printing the values of a line after calculating its gradient magnitude.
+	/*for (int j = 0; j < imageWidth; j++) {
+		const ImageType2D::IndexType pixelIndex2D = { { j, 20 } };
+		ImageType2D::PixelType pixelValue2D = componentExtractor_y->GetOutput()->GetPixel(pixelIndex2D);
+		std::cout << pixelValue2D << "  ";
+	}*/
+
+	// Potential energy. 
+
+	// Functional energy. 
+
+	// printing out the origin, spacing and direction of the image.
+	const ImageType3D::SpacingType& sp = image->GetSpacing();
+	std::cout << "Spacing = ";
+	std::cout << sp[0] << ", " << sp[1] << "," << sp[2] << std::endl;
+
+	const ImageType3D::PointType& opt = image->GetOrigin();
+	std::cout << "Origin = ";
+	std::cout << opt[0] << ", " << opt[1] << ", " << opt[2] << std::endl;
+
+	const ImageType3D::DirectionType& direct = image->GetDirection();
+	std::cout << "Direction = ";
+	std::cout << direct << std::endl;
+
+	// Getting the coordinates of the points at slice 83. (12th slice within the sphere)
+	int offset = 12 -1;
+	float Egrad[TEMP_n];
+	std::cout << "The gradients at the selected points are "<< std::endl;
+	for (int j = 1; j < TEMP_n; j++) { // TEMP_n points on each slice.
+		const ImageType2D::IndexType pixelIndex2D = { { spherePointSet->GetPoint((offset*TEMP_n) + j)[0] , spherePointSet->GetPoint((offset*TEMP_n) + j)[1] } };
+		std::cout << "Printing the values at ID: "<< (offset*TEMP_n) + j << "   "  << spherePointSet->GetPoint((offset*TEMP_n) + j)[0] << " and " << spherePointSet->GetPoint((offset*TEMP_n) + j)[1] << std::endl;
+		ImageType2D::PixelType pixelValue2D = componentExtractor_x->GetOutput()->GetPixel(pixelIndex2D) + componentExtractor_y->GetOutput()->GetPixel(pixelIndex2D);
+		std::cout << pixelValue2D << "  ";
+		Egrad[j - 1] = pixelValue2D;
 	}
 
+	// Calculating the potential energy.
+	float Epot[TEMP_n];
+	offset = 12 - 1;
+	std::cout << "The potential energy at the points are " << std::endl;
+	for (int j = 1; j < TEMP_n; j++) { // TEMP_n points on each slice.
+		const ImageType2D::IndexType pixelIndex2D = { { spherePointSet->GetPoint((offset*TEMP_n) + j)[0] , spherePointSet->GetPoint((offset*TEMP_n) + j)[1] } };
+		std::cout << "Printing the values at ID: " << (offset*TEMP_n) + j << "   " << spherePointSet->GetPoint((offset*TEMP_n) + j)[0] << " and " << spherePointSet->GetPoint((offset*TEMP_n) + j)[1] << std::endl;
+		ImageType2D::PixelType pixelValue2D = image2d->GetPixel(pixelIndex2D);
+		std::cout << pixelValue2D << "  ";
 
+	}
+	std::cout << std::endl << "The second potential energy values are " << std::endl;
+	for (int j = 1; j < TEMP_n; j++) { // TEMP_n points on each slice.
+
+		const ImageType3D::IndexType pixelIndex3D = { { spherePointSet->GetPoint((offset*TEMP_n) + j)[0], imageHeight - spherePointSet->GetPoint((offset*TEMP_n) + j)[1], fileNames.size() - spherePointSet->GetPoint((offset*TEMP_n) + j)[2] } };
+		ImageType3D::PixelType pixelValue3D = image->GetPixel(pixelIndex3D);
+		std::cout << pixelValue3D << " ";
+		Epot[j - 1] = pixelValue3D;
+	}
+
+	// Elastic energy.
+	float Eelastic[TEMP_n];
+	for (int j = 2; j < TEMP_n; j++) {
+		// Finding the distance between two points. 
+		itk::Point<float, 3> p0 = spherePointSet->GetPoint((offset*TEMP_n) + j -1);
+		itk::Point<float, 3> p1 = spherePointSet->GetPoint((offset*TEMP_n) + j);
+		double dist = p0.EuclideanDistanceTo(p1);
+		std::cout << " The distance between both the points is " << dist << std::endl;
+		Eelastic[j] = dist;
+	}
+	
+
+	// Bending energy.
+	float Ebend[TEMP_n];
+	for (int j = 2; j < TEMP_n-1; j++) {
+		// Finding the X and Y calculation for position.  
+		itk::Point<float, 3> p0 = spherePointSet->GetPoint((offset*TEMP_n) + j - 1);
+		itk::Point<float, 3> p1 = spherePointSet->GetPoint((offset*TEMP_n) + j);
+		itk::Point<float, 3> p2 = spherePointSet->GetPoint((offset*TEMP_n) + j + 1);
+		// Calculating the bending energy for X
+		float EbendX = p0[0] - (2 * p1[0]) + p2[0];
+
+		// Calculating the bending energy for Y
+		float EbendY = p0[1] - (2 * p1[1]) + p2[1];
+
+		std::cout << "The Bending energy X = " << EbendX << " The Bending Y = " << EbendY << std::endl;
+		Ebend[j - 1] = EbendX + EbendY;
+	}
+
+	// Calculating the attraction energy. 
+	// Calculate the distance from the points to the center of the slice.
+	float seedPointDist[TEMP_n];
+	float d[TEMP_n];
+	float avgDist = 0;
+	for (int j = 1; j < TEMP_n; j++) {
+		// Finding the distance between two points. 
+		itk::Point<float, 3> p0 = spherePointSet->GetPoint((offset*TEMP_n) + j - 1);
+		itk::Point<float, 3> pCenter;
+		pCenter[0] = seedPoint[0];
+		pCenter[1] = seedPoint[1];
+		pCenter[2] = offset;
+		seedPointDist[j-1] = p0.EuclideanDistanceTo(pCenter);
+		avgDist += seedPointDist[j - 1];
+		std::cout << " The distance between both the point and seedpoint is " << seedPointDist[j - 1] << std::endl;
+	}
+	avgDist = avgDist / (TEMP_n - 1);
+	std::cout << "The average is " << avgDist;
+	std::cout << "The standard deviation is " << standard_deviation(seedPointDist, TEMP_n);
+
+	// Computing the energy functional.
+	float Efunctional[TEMP_n];
+	float Eattr[TEMP_n];
+	for (int i = 1; i < TEMP_n; i++) {
+		Eattr[i] = seedPointDist[i] / avgDist;
+		Efunctional[i] = Eelastic[i] + Ebend[i] + Eattr[i] + Egrad[i] + Epot[i];
+		std::cout << "The functional energy is " << Efunctional[i];
+	}
+
+	ImageType2D::Pointer binaryImage = ImageType2D::New();
+	utility::CreateImage(binaryImage);
+	utility::display2DImage(binaryImage);
   }
   catch (itk::ExceptionObject &ex) {
     std::cout << "The program encountered an exception: " << ex << std::endl;

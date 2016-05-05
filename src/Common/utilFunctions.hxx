@@ -8,12 +8,15 @@
 #include "itkExtractImageFilter.h"
 #include "itkRescaleIntensityImageFilter.h"
 #include "QuickView.h"
+#include "itkPointSetToImageFilter.h"
 
-typedef signed short PixelType;
+typedef float PixelType;
 typedef itk::Image< PixelType, 3 > ImageType3D;
 typedef itk::ImageSeriesReader< ImageType3D > ReaderType;
 typedef itk::Image< PixelType, 2 > ImageType2D;
 typedef itk::ExtractImageFilter < ImageType3D, ImageType2D > FilterType2D;
+typedef itk::PointSet< PixelType, 3 > PointSetType;
+typedef itk::Image< PixelType, 2 >  BinaryImageType;
 
 namespace utility {
 
@@ -113,6 +116,59 @@ namespace utility {
     img->Update();
 
     return img;
+  }
+
+  /*
+  BinaryImageType::Pointer getImageFromPoints(PointSetType::Pointer pointSet) {
+	  typedef itk::PointSetToImageFilter<PointSetType, BinaryImageType> PointsToImageFilterType;
+	  PointsToImageFilterType::Pointer pointsToImageFilter = PointsToImageFilterType::New();
+	  pointsToImageFilter->SetInput(pointSet);
+	  BinaryImageType::SpacingType spacing;
+	  spacing.Fill(1.0);
+	  BinaryImageType::PointType origin;
+	  origin.Fill(0.0);
+	  pointsToImageFilter->SetSpacing(spacing);
+	  pointsToImageFilter->SetOrigin(origin);
+	  pointsToImageFilter->Update();
+	  BinaryImageType::Pointer binaryImage = pointsToImageFilter->GetOutput();
+	  return binaryImage;
+  }
+  */
+
+  void CreateImage(ImageType2D::Pointer image, PointSetType::Pointer pointSet)
+  {
+	  // Create a black image with a white square
+	  ImageType2D::IndexType start;
+	  start.Fill(0);
+
+	  ImageType2D::SizeType size;
+	  size.Fill(100);
+
+	  ImageType2D::RegionType region;
+	  region.SetSize(size);
+	  region.SetIndex(start);
+	  image->SetRegions(region);
+	  image->Allocate();
+	  image->FillBuffer(0);
+
+	  itk::ImageRegionIterator<ImageType2D> imageIterator(image, image->GetLargestPossibleRegion());
+
+	  // Make two squares
+	  while (!imageIterator.IsAtEnd())
+	  {
+		  if ((imageIterator.GetIndex()[0] > 5 && imageIterator.GetIndex()[0] < 20) &&
+			  (imageIterator.GetIndex()[1] > 5 && imageIterator.GetIndex()[1] < 20))
+		  {
+			  imageIterator.Set(255);
+		  }
+
+		  if ((imageIterator.GetIndex()[0] > 50 && imageIterator.GetIndex()[0] < 70) &&
+			  (imageIterator.GetIndex()[1] > 50 && imageIterator.GetIndex()[1] < 70))
+		  {
+			  imageIterator.Set(255);
+		  }
+		  ++imageIterator;
+	  }
   }
 }
 
