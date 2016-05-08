@@ -66,21 +66,7 @@ int main(int argc, char ** argv) {
 	lungs->SetInput(image);
 	lungs->Update();
 
-	typedef itk::Image<unsigned char, 2> SegmentedLungSlice;
-	typename SegmentedLungSlice::Pointer image2d = extract2DImageSlice<SegmentedLungImage, SegmentedLungSlice >(lungs->GetOutput(), 2, 63);
-
-	typedef itk::RescaleIntensityImageFilter<SegmentedLungSlice, ImageType2D> RescaleFilterType;
-	RescaleFilterType::Pointer rescaleFilter = RescaleFilterType::New();
-	rescaleFilter->SetInput(image2d);
-	rescaleFilter->SetOutputMinimum(0);
-	rescaleFilter->SetOutputMaximum(255);
-	rescaleFilter->Update();
-
-	QuickView viewer;
-	//viewer.AddImage(image2d);
-	viewer.AddImage(rescaleFilter->GetOutput());
-	viewer.Visualize();
-
+	displaySlice<SegmentedLungImage>(lungs->GetOutput(), 2, 63);
     }
     catch (ExceptionObject &ex) {
         cerr << "The program encountered an exception: " << ex << endl;

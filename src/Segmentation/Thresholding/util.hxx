@@ -3,6 +3,10 @@
 #ifndef CSC621WIND_UTIL_H_
 #define CSC621WIND_UTIL_H_
 
+#include "itkImage.h"
+#include "itkRescaleIntensityImageFilter.h"
+#include "QuickView.h"
+
 template <typename TInputImage, typename TOutputImage = itk::Image<typename TInputImage::PixelType, TInputImage::ImageDimension> >
 typename TOutputImage::Pointer extract2DImageSlice(typename TInputImage::Pointer input, int plane, int slice) {
 	typedef itk::ExtractImageFilter < TInputImage, TOutputImage > FilterType;
@@ -33,5 +37,26 @@ typename TOutputImage::Pointer extract2DImageSlice(typename TInputImage::Pointer
 	return img;
 }
 
+template <typename TViewer, typename TImage, typename TImageDisplay = itk::Image<unsigned char, 2> >
+void addImage(TViewer & viewer, typename TImage::Pointer image) {
+	typedef itk::RescaleIntensityImageFilter<TImage, TImageDisplay> RescaleFilterType;
+	typename RescaleFilterType::Pointer rescaleFilter = RescaleFilterType::New();
+	rescaleFilter->SetInput(image);
+	rescaleFilter->SetOutputMinimum(0);
+	rescaleFilter->SetOutputMaximum(255);
+	rescaleFilter->Update();
+
+	viewer.AddImage(rescaleFilter->GetOutput());
+}
+
+template <typename TImage>
+void displaySlice(typename TImage::Pointer image, int plane, int sliceIndex ) {
+	typedef itk::Image<typename TImage::PixelType, 2> SliceType;
+	typename SliceType::Pointer slice = extract2DImageSlice<TImage, SliceType>(image, plane, sliceIndex);
+
+	QuickView viewer;
+	addImage<QuickView, SliceType>(viewer, slice);
+	viewer.Visualize();
+}
 
 #endif /* CSC621WIND_UTIL_H_ */
