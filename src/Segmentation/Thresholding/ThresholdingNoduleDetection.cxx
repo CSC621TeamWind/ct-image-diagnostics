@@ -12,6 +12,8 @@
 #include "itkOtsuThresholdCalculator.h"
 #include "SegmentedLungFilter.hxx"
 
+#include "util.hxx"
+
 using std::cout;
 using std::cerr;
 using std::endl;
@@ -65,7 +67,7 @@ int main(int argc, char ** argv) {
 	lungs->Update();
 
 	typedef itk::Image<unsigned char, 2> SegmentedLungSlice;
-	typename SegmentedLungSlice::Pointer image2d = utility::extract2DImageSlice<SegmentedLungImage, SegmentedLungSlice >(lungs->GetOutput(), 2, 63);
+	typename SegmentedLungSlice::Pointer image2d = extract2DImageSlice<SegmentedLungImage, SegmentedLungSlice >(lungs->GetOutput(), 2, 63);
 
 	typedef itk::RescaleIntensityImageFilter<SegmentedLungSlice, ImageType2D> RescaleFilterType;
 	RescaleFilterType::Pointer rescaleFilter = RescaleFilterType::New();
