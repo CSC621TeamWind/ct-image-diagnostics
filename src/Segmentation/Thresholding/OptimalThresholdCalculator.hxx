@@ -76,6 +76,7 @@ public:
         MeasurementType background = itk::NumericTraits<MeasurementType>::ZeroValue(); 
         FrequencyType nbackground = itk::NumericTraits<FrequencyType>::ZeroValue();
 
+	++iter;
         while (iter != end) {
             MeasurementType value = iter.GetMeasurementVector()[0];
 
