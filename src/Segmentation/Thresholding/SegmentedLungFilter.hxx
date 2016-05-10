@@ -27,7 +27,13 @@ public:
     bool operator==(const LungTorsoSegment & other) const { return !( *this != other ); }
 
     inline TPixel operator()(const TPixel & A, const TPixel & B) const
-    { return static_cast<TPixel>((!A) && B); }
+    {
+        if((!A) && B) {
+            return itk::NumericTraits<TPixel>::max();
+        } else {
+            return itk::NumericTraits<TPixel>::ZeroValue();
+        }
+    }
 };
 
 
@@ -163,10 +169,10 @@ public:
     FinalLungsSegmentedImagePointer segmentLungsFinal(InitialLungsSegmentedImagePointer initialLungs) {
         FinalLungsSegmentedImagePointer lungs = FinalLungsSegmentedImage::New();
 
-	// Update initial lungs before use
-	initialLungs->Update();
+        // Update initial lungs before use
+        initialLungs->Update();
 
-	typename HoleFillingFilter::Pointer filter = HoleFillingFilter::New();
+        typename HoleFillingFilter::Pointer filter = HoleFillingFilter::New();
         lungs->SetFilter(filter);
         lungs->SetInput(initialLungs->GetOutput());
 
@@ -191,8 +197,8 @@ public:
 
         // Fill holes in the initial lung mask to obtain the final lung mask
         FinalLungsSegmentedImagePointer lungs = segmentLungsFinal(initialLungs);
-	lungs->Update();
-	this->GraftOutput(lungs->GetOutput());
+        lungs->Update();
+        this->GraftOutput(lungs->GetOutput());
     }
 };
 
