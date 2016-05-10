@@ -154,25 +154,23 @@ public:
         return initialLungs;
     }
 
-    typedef SegmentedImage FinalLungsSegmentedImage;
+    typedef itk::SliceBySliceImageFilter<typename BinaryImageFilter::OutputImageType, SegmentedImage, HoleFillingFilter> FinalLungsSegmentedImage;
     typedef typename FinalLungsSegmentedImage::Pointer FinalLungsSegmentedImagePointer;
 
     /**
      * Calculate the final lung mask from the initial mask
      */
-    SegmentedSliceFilterPointer segmentLungsFinal(InitialLungsSegmentedImagePointer initialLungs) {
+    FinalLungsSegmentedImagePointer segmentLungsFinal(InitialLungsSegmentedImagePointer initialLungs) {
         FinalLungsSegmentedImagePointer lungs = FinalLungsSegmentedImage::New();
 
 	// Update initial lungs before use
 	initialLungs->Update();
 
-        SegmentedSliceFilterPointer slices = SegmentedSliceFilter::New();
-	
 	typename HoleFillingFilter::Pointer filter = HoleFillingFilter::New();
-        slices->SetFilter(filter);
-        slices->SetInput(initialLungs->GetOutput());
+        lungs->SetFilter(filter);
+        lungs->SetInput(initialLungs->GetOutput());
 
-        return slices;
+        return lungs;
     }
 
     void GenerateData() {
@@ -192,7 +190,7 @@ public:
         InitialLungsSegmentedImagePointer initialLungs = segmentLungsInitial(flesh, torso);
 
         // Fill holes in the initial lung mask to obtain the final lung mask
-        SegmentedSliceFilterPointer lungs = segmentLungsFinal(initialLungs);
+        FinalLungsSegmentedImagePointer lungs = segmentLungsFinal(initialLungs);
 	lungs->Update();
 	this->GraftOutput(lungs->GetOutput());
     }
