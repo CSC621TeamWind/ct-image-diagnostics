@@ -195,7 +195,7 @@ namespace utility {
 		  if (sliceNumber == p[2]) {
 			  ImageTypeUnsigned::IndexType pixelIndexSpherePoint;
 			  pixelIndexSpherePoint[0] = p[0];
-			  pixelIndexSpherePoint[1] = p[1];
+			  pixelIndexSpherePoint[1] = height - p[1]; // TODO: Figure out the final coordinate system.
 			  //std::cout << "The index of the point is " << pointIterator.Index() << std::endl;
 			  binaryImage->SetPixel(pixelIndexSpherePoint, 65530);  // TODO: Rescale intensity range.
 			  //std::cout << "The required points are " << pixelIndexSpherePoint << std::endl;
