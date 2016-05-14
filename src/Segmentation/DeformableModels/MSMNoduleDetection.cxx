@@ -144,7 +144,7 @@ public:
 			int index = 0;
 			for (int k = 0; k <= nNeighborhood; k++)
 			{
-				std::cout << "The Value is " << candidatePointEnergies[k] << std::endl;
+				//std::cout << "The Value is " << candidatePointEnergies[k] << std::endl;
 				if (candidatePointEnergies[k] < candidatePointEnergies[index])
 					index = k;
 			}
@@ -204,7 +204,7 @@ public:
 				eSpringDown = 0.5 * k * dist * dist;
 			}
 			vertices[i - minId].eElastic = eSpringLeft + eSpringRight + eSpringUp + eSpringDown;
-			//std::cout << "eElastic of ID " << i << "is " << vertices[i-minId].eElastic << std::endl;
+			std::cout << "eElastic of ID " << i << "is " << vertices[i-minId].eElastic << std::endl;
 
 			// Finding the elastic energy of the neighbours
 			for (int j = 0; j < nNeighborhood; j++) {
@@ -445,11 +445,14 @@ public:
 		avgDist = avgDist / TEMP_n;  // Find the average of all the distances of the point from the midpoint.
 		//std::cout << "The average is " << avgDist;
 		sd = standard_deviation(seedPointDist, TEMP_n);
-
+		std::cout << "The slice number is " << sliceNumber << " min id " << minId << "Max id " << maxId << std::endl;
 		for (int i = minId; i <= maxId; i++) {
 			// Finding the distance between two points. 
 			if (seedPointDist[i - minId] > avgDist + sd) {
 				vertices[i - minId].eAttraction = seedPointDist[i - minId] / avgDist;
+			}
+			else {
+				vertices[i - minId].eAttraction = 0;
 			}
 			//std::cout << "The attraction energy is " << vertices[i - minId].eAttraction << std::endl;
 		}
@@ -479,13 +482,13 @@ public:
 				if (seedPointDist[i - minId] > avgDist + sd) {
 					neighborhood[i-minId].vertices[j].eAttraction = seedPointDist[i - minId] / avgDist;
 				}
+				else {
+					neighborhood[i - minId].vertices[j].eAttraction = 0;
+				}
 				//std::cout << "The attraction Value is " << vertices[i - minId].eAttraction << std::endl;
 			}
-
 		}
-
 	}
-
 };
 
 /* Represents a candidate nodule within the segmentation operation.
@@ -805,34 +808,22 @@ int main(int argc, char *argv[]) {
 	std::map<int, CandidateNoduleFileData> noduleMap;
 
 	while (std::getline(ifs, fileLine)) {
-		std::cout << "The line is : " << fileLine << std::endl;
 		char* dup = _strdup(fileLine.c_str());
 		char* token = std::strtok(dup, ",\t");
 		if (fileLine.find(",") != std::string::npos) {
 			while (token != NULL) {
 				CandidateNoduleFileData cf;
 				cf.id = ++noduleCount;
-				std::cout << token << std::endl;
 				cf.x = atof(token);
 				token = std::strtok(NULL, ",\t");
-
-				std::cout << token << std::endl;
 				cf.y = atof(token);
 				token = std::strtok(NULL, ",\t");
-
-				std::cout << token << std::endl;
 				cf.z = atof(token);
 				token = std::strtok(NULL, ",\t");
-
-				std::cout << token << std::endl;
 				cf.xDim = atof(token);
 				token = std::strtok(NULL, ",\t");
-
-				std::cout << token << std::endl;
 				cf.yDim = atof(token);
 				token = std::strtok(NULL, ",\t");
-
-				std::cout << token << std::endl;
 				cf.zDim = atof(token);
 				token = std::strtok(NULL, ",\t");
 
@@ -856,7 +847,7 @@ int main(int argc, char *argv[]) {
 
 	// Initialize the set of candidate nodules.
 	DeformableMSMSegmentation<itk::Point<PixelType, 3>> seg;
-	seg.setIterations(3); 
+	seg.setIterations(10); 
 	// Create an add candidate nodules for processing.
 	typedef std::map<int, CandidateNoduleFileData>::iterator itType;
 	for (itType iterator = noduleMap.begin(); iterator != noduleMap.end(); iterator++) {
