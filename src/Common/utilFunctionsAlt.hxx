@@ -72,6 +72,7 @@ namespace utility {
     catch (itk::ExceptionObject &ex) {
       std::cout << ex << std::endl;
     }
+	return NULL;
   }
 
   /*

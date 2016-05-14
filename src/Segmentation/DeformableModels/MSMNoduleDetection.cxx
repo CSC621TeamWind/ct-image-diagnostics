@@ -7,6 +7,7 @@
 #include "utilFunctionsAlt.hxx" 
 #include "itkVectorIndexSelectionCastImageFilter.h"
 #include "itkSobelEdgeDetectionImageFilter.h"
+
 #include "math.h"
 #include <map>
 #include <array>
@@ -16,13 +17,15 @@ Detection of nodules using stable mass-spring models.
 To be integrated into the segmentation framework to use with different datasets.
 */
 
-// Temporarily using this dataset with a hardcoded seedpoint and radius.
+// Debug data - Temporarily using this dataset with a hardcoded seedpoint and radius.
 const std::string TEMP_DICOM_DATASET_DIR = "../../../../../datasets/Cornell/SS0016/SS0016-20000101/SS0016/20000101-094600-0-2";
+const std::string TEMP_CANDIDATE_NODULE_FILE = "../../CandidateNodules.txt";
 const int TEMP_NODULE_RADUIS = 40;  // the temporary radius of the nodule in question in pixels.
 const int TEMP_SEEDPOINT[] = { 112, 229, 83 };  // the center point of the nodule detected through preprocessing.
 const int TEMP_NODULE_SLICES = 22;  // number of image slices over which the nodule is present.
 const int TEMP_n = 20;  // number of mass points per image slice.
 
+// Globals
 ImageType3D::Pointer image;
 ImageType3D::Pointer gradientImage;
 int height;
@@ -35,11 +38,14 @@ const float beta = 0.2;
 const float gamma = 0.2;
 const float delta = 0.2;
 const float epsilon = 0.2;
-
 const int nNeighborhood = 8;
+
+// forward declaration
 template <typename TPoint>
 class MSMVertexNeighborhood;
 
+/* Represents a single mass spring point.
+*/
 template <typename TPoint>
 class MSMVertex {
 public:
@@ -57,6 +63,8 @@ public:
 	~MSMVertex() {}
 };
 
+/* Represents the 8-neighborhood of the mass-sping point.
+*/
 template<typename TPoint>
 class MSMVertexNeighborhood {
 public:
@@ -67,6 +75,8 @@ public:
 
 };
 
+/* Represents a single slice of a candidate nodule.
+*/
 template <typename TPoint>
 class CandidateNoduleSlice {
 public:
@@ -144,7 +154,7 @@ public:
 			std::cout << "Using transformation " << offset[0] << ", " << offset[1] << std::endl;
 			
 			TPoint p1 = nodulePointset->GetPoint(pointId);
-			std::cout << "Old PointId is " << pointId << "The point is " << p1[0] << "," << p1[1] << ", " << p1[2] << std::endl;
+			//std::cout << "Old PointId is " << pointId << "The point is " << p1[0] << "," << p1[1] << ", " << p1[2] << std::endl;
 			p1[0] = p1[0] + offset[0];
 			p1[1] = p1[1] + offset[1];
 			myPointset->SetPoint(pointId, p1);
@@ -478,6 +488,8 @@ public:
 
 };
 
+/* Represents a candidate nodule within the segmentation operation.
+*/
 template <typename TPoint>
 class CandidateNodule {
 public:
@@ -591,6 +603,7 @@ public:
 				std::cout << "Processing slice: " << noduleSlice.sliceNumber;
 				noduleSlice.nodulePointset = PointSetType::New();
 				noduleSlice.nodulePointset = nodulePointset;
+				//utility::WriteBinaryLabelImage(nodulePointset, width, height, noduleSlice.midPoint[2], "results/TestLabel.png");
 				noduleSlice.process();
 				noduleSlice.evolveSlice(evolvedNodulePointset);
 				// std::string filename = "TestLabel_" + std::to_string(noduleSlice.midPoint[2]) + ".png";
@@ -639,7 +652,8 @@ public:
 	}
 };
 
-
+/* Represents the segmentation operation using Deformable Mass spring models.
+*/
 template <typename TPoint>
 class DeformableMSMSegmentation {
 public :
@@ -660,7 +674,7 @@ public :
 			std::cout << "Processing nodule " << iterator->first << std::endl;
 			CandidateNodule<TPoint> nodule = iterator->second;
 			PointSetType::Pointer  spherePointSet = PointSetType::New();
-			spherePointSet = nodule.generateInitialSphereModel(TEMP_NODULE_RADUIS);
+			spherePointSet = nodule.generateInitialSphereModel(nodule.maxRadius);
 			nodule.writeImageSlices();
 
 			// Main processing starts here.
@@ -672,18 +686,6 @@ public :
 				}
 			}
 		}
-		/*
-		std::cout << "The number of nodules are " << noduleList.magnitude << std::endl;
-		for (int i = 0; i < noduleList.magnitude; i++) {
-			std::cout << noduleList[i].seedPoint[0];
-			CandidateNodule<TPoint> nodule = noduleList[i];
-			PointSetType::Pointer  spherePointSet = PointSetType::New();
-			spherePointSet = nodule.generateInitialSphereModel(TEMP_NODULE_RADUIS);
-			for (int k = 0; k < numIterations; k++) {
-				// process each nodule in the list.
-				nodule.processNodule();
-			}
-		}*/
 	}
 
 	// contains the following functions
@@ -720,19 +722,127 @@ float standard_deviation(float data[], int n)
 	return sqrt(sum_deviation / n);
 }
 
+int validateArguments(std::string dicomPath, std::string candidateListPath) {
+	// Check whether the dicom directory exists.
+	struct stat info;
+
+	if (stat(dicomPath.c_str(), &info) != 0) {
+		std::cout << "Cannot access Dicom directory: " << dicomPath << std::endl;
+		return -1;
+	}
+
+	if (stat(candidateListPath.c_str(), &info) != 0) {
+		std::cout << "Cannot access nodule candidate list file: " << candidateListPath << std::endl;
+		return -1;
+	}
+	return 0;
+}
+
+int getFileLineCount(std::string filename) {
+	std::ifstream f(filename);
+	std::string line;
+	int i = 0;
+	for (i = 0; std::getline(f, line); ++i);
+	return i;
+}
+
+class CandidateNoduleFileData {
+public:
+	int id;
+	float x;
+	float y;
+	float z;
+	float xDim;
+	float yDim;
+	float zDim;
+};
+
 int main(int argc, char *argv[]) {
 
 
+  // Accepting arguments from the command line.
+  if (argc < 2) {
+		std::cerr << "Usage: " << std::endl;
+		std::cerr << argv[0] << std::endl;
+		std::cerr << " <Dicom_Directory> <Candidate_list_file>" << std::endl;
+		return EXIT_FAILURE;
+   }
+
   // read the DICOM image series and print out the number of slices.
-  std::cout << "Reading the DICOM image directory : " << TEMP_DICOM_DATASET_DIR << std::endl;
+  std::string dicomDir = argv[1];
+  std::string candidateFilePath = argv[2];
+  if (dicomDir == "DEBUG") {
+	  dicomDir = TEMP_DICOM_DATASET_DIR;
+  }
+  if (candidateFilePath == "DEBUG") {
+	  candidateFilePath = TEMP_CANDIDATE_NODULE_FILE;
+  }
+
+  // Validate the arguments
+  if (validateArguments(dicomDir, candidateFilePath) != 0) {
+	  std::cerr << "One or more arguments are invalid." << std::endl;
+	  return EXIT_FAILURE;
+  }
+
+  std::cout << "Reading the DICOM image directory : " << dicomDir << std::endl;
   try {
+
     ReaderType::Pointer reader = ReaderType::New();
-    reader = utility::readDicomImageSeries(TEMP_DICOM_DATASET_DIR);
+    reader = utility::readDicomImageSeries(dicomDir);
     typedef std::vector< std::string > FileNamesContainer;
     FileNamesContainer fileNames;
     fileNames = reader->GetFileNames();
     std::cout << "The total number of slices are " << fileNames.size() << std::endl;
-    std::cout << "Using the file:" << fileNames[fileNames.size()-TEMP_SEEDPOINT[2]] << std::endl;  // this seems to read the images backwards fileName[0] has the largest instead
+    //std::cout << "Using the file:" << fileNames[fileNames.size()-TEMP_SEEDPOINT[2]] << std::endl;  // this seems to read the images backwards fileName[0] has the largest instead
+
+	int numLines = getFileLineCount(candidateFilePath);
+	// Read the nodule file.
+	std::cout << "Reading the nodule candidate list file: " << candidateFilePath << std::endl;
+	std::ifstream ifs;
+	ifs.open(candidateFilePath, std::ifstream::in); 
+	std::string fileLine;
+	int noduleCount = 0;
+	std::map<int, CandidateNoduleFileData> noduleMap;
+
+	while (std::getline(ifs, fileLine)) {
+		std::cout << "The line is : " << fileLine << std::endl;
+		char* dup = _strdup(fileLine.c_str());
+		char* token = std::strtok(dup, ",\t");
+		if (fileLine.find(",") != std::string::npos) {
+			while (token != NULL) {
+				CandidateNoduleFileData cf;
+				cf.id = ++noduleCount;
+				std::cout << token << std::endl;
+				cf.x = atof(token);
+				token = std::strtok(NULL, ",\t");
+
+				std::cout << token << std::endl;
+				cf.y = atof(token);
+				token = std::strtok(NULL, ",\t");
+
+				std::cout << token << std::endl;
+				cf.z = atof(token);
+				token = std::strtok(NULL, ",\t");
+
+				std::cout << token << std::endl;
+				cf.xDim = atof(token);
+				token = std::strtok(NULL, ",\t");
+
+				std::cout << token << std::endl;
+				cf.yDim = atof(token);
+				token = std::strtok(NULL, ",\t");
+
+				std::cout << token << std::endl;
+				cf.zDim = atof(token);
+				token = std::strtok(NULL, ",\t");
+
+				noduleMap[cf.id] = cf;
+			}
+		}
+		if (noduleCount == numLines-1)
+			break;
+		free(dup);
+	}
 
 	// Assigning global variables. TODO: Convert to static ?
     image = reader->GetOutput();
@@ -742,14 +852,27 @@ int main(int argc, char *argv[]) {
 	depth = imageSize[2];
 	std::cout << "Width is " << width << " HEight is " << height << " Depth is " << depth;
 	// Set origin and spacing for viewing.
-	std::cout << "The origin is " << image->GetOrigin();  // TODO 
+	std::cout << "The origin is " << image->GetOrigin(); 
 
-
-	//utility::display2DImage(utility::extract2DImageSlice(gradientImage, 2, fileNames.size() - TEMP_SEEDPOINT[2]));
 	// Initialize the set of candidate nodules.
-	/* Get some way of initializing the candidate nodules.
-	*/
-	CandidateNodule<itk::Point<PixelType, 3>> nodule;
+	DeformableMSMSegmentation<itk::Point<PixelType, 3>> seg;
+	seg.setIterations(3); 
+	// Create an add candidate nodules for processing.
+	typedef std::map<int, CandidateNoduleFileData>::iterator itType;
+	for (itType iterator = noduleMap.begin(); iterator != noduleMap.end(); iterator++) {
+		CandidateNodule<itk::Point<PixelType, 3>> nodule;
+		CandidateNoduleFileData cf = iterator->second;
+		nodule.seedPoint[0] = cf.x;
+		nodule.seedPoint[1] = cf.y;
+		nodule.seedPoint[2] = cf.z;
+		nodule.numSlices = cf.zDim;
+		nodule.maxRadius = cf.xDim;
+		seg.addNodule(nodule);
+	}
+
+	seg.process();
+
+	/*CandidateNodule<itk::Point<PixelType, 3>> nodule;
 	nodule.seedPoint[0] = TEMP_SEEDPOINT[0];
 	nodule.seedPoint[1] = TEMP_SEEDPOINT[1];
 	nodule.seedPoint[2] = TEMP_SEEDPOINT[2];
@@ -760,25 +883,7 @@ int main(int argc, char *argv[]) {
 	DeformableMSMSegmentation<itk::Point<PixelType, 3>> seg;
 	seg.setIterations(3);
 	seg.addNodule(nodule);
-	seg.process();
-	//ImageType3D::PointType newOrigin;
-	//newOrigin.Fill(0.0);
-	//image->SetOrigin(newOrigin);
-
-    // Generating a PointSet for the initial spherical MSM.
-    /*PointSetType::Pointer  spherePointSet = PointSetType::New();
-	spherePointSet = nodule.generateInitialSphereModel(TEMP_NODULE_RADUIS);
-
-    typedef PointSetType::PointType PointType;
-   
-    PointType seedPoint;
-    seedPoint[0] = TEMP_SEEDPOINT[0];
-    seedPoint[1] = TEMP_SEEDPOINT[1];
-    seedPoint[2] = TEMP_SEEDPOINT[2];
-
-	nodule.processNodule();
-
-	nodule.processNeighborhood();*/
+	seg.process();*/
 
   }
   catch (itk::ExceptionObject &ex) {
