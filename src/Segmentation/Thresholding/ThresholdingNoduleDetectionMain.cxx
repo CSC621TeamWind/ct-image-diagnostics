@@ -20,7 +20,7 @@
 
 //#include "MultipleThresholding.hxx"
 
-#include "util.hxx"
+//#include "util.hxx"
 
 using std::cout;
 using std::cerr;
@@ -74,18 +74,36 @@ int main(int argc, char ** argv) {
     typedef unsigned char InputPixelType;
     typedef unsigned char OutputPixelType;
 
+    /*
+    //     For Image Iteration Purposes
+    */
+
+    typedef itk::Image< float, 3 > IteratorImageType;
+    typedef itk::ImageRegionConstIterator< IteratorImageType > ConstIteratorType;
+    typedef itk::ImageRegionIterator< IteratorImageType > IteratorType;
+
+    /*
+           Image Type declaration
+    */
+
     typedef itk::Image< InputPixelType,  3 >   InputImageType;
     typedef itk::Image< OutputPixelType, 3 >   OutputImageType;
 
     typename itk::Image< InputImageType, 3 >::Pointer TempImageType;
 
+    // Binary Threshold Image Filter Declaration
+
     typedef itk::BinaryThresholdImageFilter< InputImageType, InputImageType > ThresholdFilterType;
     ThresholdFilterType::Pointer thresholder = ThresholdFilterType::New();
     
+    //Vector to store Images
     typedef std::vector<ThresholdFilterType::Pointer> ThresholdVector;
     ThresholdVector  Tvector;
- 
-    //For Erosion
+    
+    /*
+    /        For Erosion Purposes 
+    */
+
     typedef itk::FlatStructuringElement<2> StructuringElementType;
     StructuringElementType::RadiusType elementRadius;
     elementRadius.Fill(radius);
@@ -96,7 +114,7 @@ int main(int argc, char ** argv) {
     BinaryErodeImageFilterType;
      
      for (int k = 0; k < 10; k++)
-        Tvector[k] = ThresholdFilterType::New();
+        Tvector.push_back( ThresholdFilterType::New());
     
     const PixelType OutsideValue = static_cast<PixelType>( 0 );
     const PixelType InsideValue = static_cast<PixelType>( 255 );
@@ -115,6 +133,10 @@ int main(int argc, char ** argv) {
 	    typedef typename LungFilter::OutputImageType SegmentedLungImage;
 	    lungs->SetInput(image);
 	    lungs->Update();
+
+
+
+       // displaySlice<SegmentedLungImage>(lungs->GetOutput(), 2, 63);
   
         /* Attemp erosion
 
@@ -135,17 +157,20 @@ int main(int argc, char ** argv) {
       thresholder->SetInsideValue( InsideValue );
       
       thresholder->Update();
-      Tvector[i] = thresholder;
+      Tvector.push_back( thresholder);
     }
     
-	//displaySlice<SegmentedLungImage>(lungs->GetOutput(), 2, 63);
+   // for (int j = 0; j < 10; j++)
+       // displaySlice<SegmentedLungImage>(Tvector[j]->GetOutput(), 2, 63);
 
-    for (int j = 0; j < 10; j++)
-        displaySlice<SegmentedLungImage>(Tvector[j]->GetOutput(), 2, 63);
+
 
     /*
     /Image Iterator to extract data from will go here 
     */
+
+   // IteratorImageType::Pointer CandidateNoduleImage  = Tvector[0]->GetOutput();
+
     
     //InputImageType::IndexType pixelIndex = {{0,0,0}}; //Initial Position of {x,y,z}
     //InputImageType::PixelType pixelValue;
@@ -159,7 +184,7 @@ int main(int argc, char ** argv) {
 
     typedef itk::ImageFileWriter< OutputImageType > WriterType;
     WriterType::Pointer writerThreshold = WriterType::New();
-    writerThreshold->SetFileName("~/Desktop/test.jpeg");
+    writerThreshold->SetFileName(/*"~/Desktop/test.jpeg"*/);
     writerThreshold->SetInput(lungs->GetOutput());
     writerThreshold->Update();
     
