@@ -92,6 +92,7 @@ public:
 	MSMVertex<TPoint> vertices[TEMP_n];
 	MSMVertexNeighborhood<TPoint> neighborhood[TEMP_n];  // Each vertex has an 8 neighborhood
 	PointSetType::Pointer nodulePointset;
+	float eFunctional = 0;
 
 	//typedef itk::SobelEdgeDetectionImageFilter< ImageType2D, ImageType2D > FilterType;
 	//FilterType::Pointer gradientFilter = FilterType::New();
@@ -110,6 +111,7 @@ public:
 		computeGradientEnergy();
 		computePotentialEnergy();
 		
+		float totalFunctional = 0;
 		for (int i = 0; i < TEMP_n; i++) {
 			// Calculates the weighted sum of all the energies.
 			vertices[i].eFunctional = (alpha * vertices[i].eElastic) +
@@ -117,8 +119,11 @@ public:
 				(gamma * vertices[i].eAttraction) +
 				(delta * vertices[i].eGradient) +
 				(epsilon * vertices[i].ePotential);
-			//std::cout << "eFunction of Vertex: " << vertices[i].id << " = " << vertices[i].eFunctional << std::endl;
-
+			//std::cout << vertices[i].eElastic << " %  " << vertices[i].eBending << " % " << vertices[i].eAttraction << " %  " << vertices[i].eGradient << " % " << vertices[i].ePotential << std::endl;
+			//std::cout << "eFunction of Vertex: " << i << "   " << vertices[i].id << " = " << vertices[i].eFunctional << std::endl;
+			totalFunctional += vertices[i].eFunctional;
+			if (vertices[i].eFunctional < -5000)
+				exit(1);
 			// Calculate the functional energy of each pixel in the neighborhood.
 			for (int j = 0; j < nNeighborhood; j++) {
 				neighborhood[i].vertices[j].eFunctional = (alpha * neighborhood[i].vertices[j].eElastic) +
@@ -126,8 +131,13 @@ public:
 					(gamma * neighborhood[i].vertices[j].eAttraction) +
 					(delta * neighborhood[i].vertices[j].eGradient) +
 					(epsilon * neighborhood[i].vertices[j].ePotential);
+				//std::cout << neighborhood[i].vertices[j].eElastic << " %  " << neighborhood[i].vertices[j].eBending << " % " << neighborhood[i].vertices[j].eAttraction << " %  " << neighborhood[i].vertices[j].eGradient << " % " << neighborhood[i].vertices[j].ePotential << std::endl;
+				//std::cout << "eFunction of Neighborhood Vertex: " << neighborhood[i].vertices[j].id << " = " << neighborhood[i].vertices[j].eFunctional << std::endl;
+				if (neighborhood[i].vertices[j].eFunctional < -5000)
+					exit(1);
 			}
 		}
+		eFunctional = totalFunctional;
 	}
 
 	// Compares the functional energies of the point in question and its 8 neighbors.
@@ -204,7 +214,7 @@ public:
 				eSpringDown = 0.5 * k * dist * dist;
 			}
 			vertices[i - minId].eElastic = eSpringLeft + eSpringRight + eSpringUp + eSpringDown;
-			std::cout << "eElastic of ID " << i << "is " << vertices[i-minId].eElastic << std::endl;
+			//std::cout << "eElastic of ID " << i << "is " << vertices[i-minId].eElastic << std::endl;
 
 			// Finding the elastic energy of the neighbours
 			for (int j = 0; j < nNeighborhood; j++) {
@@ -369,7 +379,7 @@ public:
 
 	void computeBendingEnergy() {
 		std::array<int, 2> offset;
-		for (int i = minId+1; i <= maxId; i++) {
+		for (int i = minId; i <= maxId; i++) {
 			// Finding the X and Y calculation for position. 
 			itk::Point<float, 3> p0;
 			itk::Point<float, 3> p1;
@@ -422,6 +432,7 @@ public:
 				// Calculating the bending energy for Y
 				EbendY = p0[1] - (2 * pNeighbor[1]) + p2[1];
 				neighborhood[i-minId].vertices[j].eBending = EbendX + EbendY;
+
 				//std::cout << "The value of " << neighborhood[i - minId].vertices[j].eBending << std::endl;
 			}
 
@@ -508,7 +519,7 @@ public:
 	typedef itk::Index<3> noduleIndex;
 	typedef itk::ImageRegion<3> NoduleRegionType;
 	NoduleRegionType nRegion(noduleSize, noduleIndex);
-	float prevTotalFunctional;
+	float prevTotalFunctional = 0;
 
 	CandidateNodule() { }
 	CandidateNodule(TPoint point, float maxRadius, float minRadius) {
@@ -554,7 +565,8 @@ public:
 				pSphere[2] = seedPoint[2] + zFactor;  // radius * cos(itk::Math::pi * (float)m / M); // z
 
 				// Set the ID and Point 
-				spherePointSet->SetPoint(++spherePointSetID, pSphere);
+				spherePointSetID++;
+				spherePointSet->SetPoint(spherePointSetID, pSphere);
 
 				// Set the point data
 				//spherePointSet->SetPointData(spherePointSetID, 255);  // All points are white for now.
@@ -599,6 +611,9 @@ public:
 
 	int processNodule() {
 		// for each slice in the map, process the vertices. 
+		// Check for stopping condition.
+
+		float totalFunctional = 0;
 		typedef std::map<int, CandidateNoduleSlice<TPoint>>::iterator itType;
 		for (itType iterator = sliceMap.begin(); iterator != sliceMap.end(); iterator++) {
 			//if (iterator->first == 11) { // TODO: Figure out which label maps need to be written out.
@@ -607,14 +622,16 @@ public:
 				noduleSlice.nodulePointset = PointSetType::New();
 				noduleSlice.nodulePointset = nodulePointset;
 				//utility::WriteBinaryLabelImage(nodulePointset, width, height, noduleSlice.midPoint[2], "results/TestLabel.png");
-				noduleSlice.process();
+				noduleSlice.process();  // calculates all the energies.
+				totalFunctional += noduleSlice.eFunctional;
 				noduleSlice.evolveSlice(evolvedNodulePointset);
 				// std::string filename = "TestLabel_" + std::to_string(noduleSlice.midPoint[2]) + ".png";
-				utility::WriteBinaryLabelImage(evolvedNodulePointset, width, height, noduleSlice.midPoint[2], "results/TestLabel.png");
+				//utility::WriteBinaryLabelImage(evolvedNodulePointset, width, height, noduleSlice.midPoint[2], "results/TestLabel.png");
 			//}
 		}
-		// Check for stopping condition.
-		float totalFunctional = getTotalFunctionalEnergy();
+		std::cout << "Total functional is " << totalFunctional << std::endl;
+		std::cout << "Previous functional is " << prevTotalFunctional << std::endl;
+
 		if (prevTotalFunctional < totalFunctional) {
 			std::cout << "Stopping condition reached.";
 			return 1;
@@ -622,6 +639,7 @@ public:
 		// Replace the nodulePointset with the evolved pointset. 
 		// FIXME: Figure if i need a pointer or value replacement. For now pointer seems to be working fine.
 		nodulePointset = evolvedNodulePointset;
+		prevTotalFunctional = totalFunctional;
 		return 0;
 	}
 
@@ -640,14 +658,16 @@ public:
 	}
 
 	float getTotalFunctionalEnergy() {
-		float totalEnergy = 0.0;
+		float totalEnergy = 0;
 		typedef std::map<int, CandidateNoduleSlice<TPoint>>::iterator itType;
 		for (itType iterator = sliceMap.begin(); iterator != sliceMap.end(); iterator++) {
 			CandidateNoduleSlice<TPoint> noduleSlice = iterator->second;
 			std::cout << "Summing up functional energy of slice: " << noduleSlice.sliceNumber;
+			std::cout << noduleSlice.vertices[0].eFunctional << "SOMETHING";
 			for (int i = 0; i < TEMP_n; i++) {
 				// Calculates the weighted sum of all the energies.
-				totalEnergy += noduleSlice.vertices[i].eFunctional;
+				totalEnergy = totalEnergy + (iterator->second).vertices[i].eFunctional;
+				std::cout << (iterator->second).vertices[i].eFunctional << "   ";
 			}
 		}
 		std::cout << "The total functional energy of this shape is " << totalEnergy << std::endl;
@@ -686,29 +706,12 @@ public :
 				int result = nodule.processNodule();
 				if (result == 1) {
 					std::cout << "Reached the final result at iteration " << (k + 1) << std::endl;
+					break;
 				}
+				std::cout << "Completed " << k + 1 << " iterations." << std::endl;
 			}
 		}
 	}
-
-	// contains the following functions
-	//initializeCandidateNodules();  // initializes all the possible candidate nodules for this dataset.
-	// processAllCandidateNodules(); // process each nodule one at a time. 
-	// processCandidateNodule(i); // process the ith nodule.
-	//computeInternalEnergy(i);  // computes the internal energy components of all the nodules.
-	//computeExternalEnergy(i);  // computes the external energy components of all the nodules.
-	//computeFunctionalEnergy(i); // computes the total functional energy components. 
-	// computeFunctionalEnergyMinimum(i); 
-	// process() 
-	/* - for each iteration i 
-		 compute internal energy at all the MSM points.
-		 compute external energy at all the MSM points.
-		 compute functional energy at all the MSM points.
-		 compute functional energy at all the 8 neighbors of the MSM points.
-		 select the least functional energy to move the points towards.
-		 update the pointset with the new positions.
-	*/
-
 };
 
 float standard_deviation(float data[], int n)
@@ -847,7 +850,7 @@ int main(int argc, char *argv[]) {
 
 	// Initialize the set of candidate nodules.
 	DeformableMSMSegmentation<itk::Point<PixelType, 3>> seg;
-	seg.setIterations(10); 
+	seg.setIterations(20); 
 	// Create an add candidate nodules for processing.
 	typedef std::map<int, CandidateNoduleFileData>::iterator itType;
 	for (itType iterator = noduleMap.begin(); iterator != noduleMap.end(); iterator++) {
