@@ -1,23 +1,22 @@
+#include "math.h"
+#include <map>
+#include <array>
 
 #include "itkPointSet.h"
 #include "itkPointSetToImageFilter.h"
 #include "itkImage.h"
 #include "itkGradientMagnitudeImageFilter.h"
 #include "itkGradientImageFilter.h"
-#include "utilFunctionsAlt.hxx" 
 #include "itkVectorIndexSelectionCastImageFilter.h"
 #include "itkSobelEdgeDetectionImageFilter.h"
 
-#include "math.h"
-#include <map>
-#include <array>
-
+#include "utilFunctionsAlt.hxx" 
 /*
 Detection of nodules using stable mass-spring models.
 To be integrated into the segmentation framework to use with different datasets.
 */
 
-// Debug data - Temporarily using this dataset with a hardcoded seedpoint and radius.
+// Debug data
 const std::string TEMP_DICOM_DATASET_DIR = "../../../../../datasets/Cornell/SS0016/SS0016-20000101/SS0016/20000101-094600-0-2";
 const std::string TEMP_CANDIDATE_NODULE_FILE = "../../CandidateNodules.txt";
 const int TEMP_NODULE_RADUIS = 40;  // the temporary radius of the nodule in question in pixels.
@@ -122,7 +121,7 @@ public:
 			//std::cout << vertices[i].eElastic << " %  " << vertices[i].eBending << " % " << vertices[i].eAttraction << " %  " << vertices[i].eGradient << " % " << vertices[i].ePotential << std::endl;
 			//std::cout << "eFunction of Vertex: " << i << "   " << vertices[i].id << " = " << vertices[i].eFunctional << std::endl;
 			totalFunctional += vertices[i].eFunctional;
-			if (vertices[i].eFunctional < -5000)
+			if (vertices[i].eFunctional < -5000)  // FIXME: Keeping this for catching wrong values.
 				exit(1);
 			// Calculate the functional energy of each pixel in the neighborhood.
 			for (int j = 0; j < nNeighborhood; j++) {
@@ -133,7 +132,7 @@ public:
 					(epsilon * neighborhood[i].vertices[j].ePotential);
 				//std::cout << neighborhood[i].vertices[j].eElastic << " %  " << neighborhood[i].vertices[j].eBending << " % " << neighborhood[i].vertices[j].eAttraction << " %  " << neighborhood[i].vertices[j].eGradient << " % " << neighborhood[i].vertices[j].ePotential << std::endl;
 				//std::cout << "eFunction of Neighborhood Vertex: " << neighborhood[i].vertices[j].id << " = " << neighborhood[i].vertices[j].eFunctional << std::endl;
-				if (neighborhood[i].vertices[j].eFunctional < -5000)
+				if (neighborhood[i].vertices[j].eFunctional < -5000) // FIXME: Keeping this for catching wrong values.
 					exit(1);
 			}
 		}
@@ -520,6 +519,7 @@ public:
 	typedef itk::ImageRegion<3> NoduleRegionType;
 	NoduleRegionType nRegion(noduleSize, noduleIndex);
 	float prevTotalFunctional = 0;
+	int currentIteration = 0;
 
 	CandidateNodule() { }
 	CandidateNodule(TPoint point, float maxRadius, float minRadius) {
@@ -602,6 +602,11 @@ public:
 			sliceMap[m] = noduleSlice;  // Add the slice into the nodule set. Associate sliceNumber -> CandidateNodule.
 		}
 		nodulePointset = spherePointSet;
+		// Testing - Try writing out the pointset and then exit.
+		/*MeshType::Pointer meshtest = utility::ConvertPointsetToMesh(spherePointSet);
+		utility::WriteITKMesh(meshtest, "testmesh.vtk");
+		//utility::WriteVTKUnstructuredGrid(meshtest, "testmeshVTU.vtu");
+		exit(1);*/
 		return spherePointSet;
 	}
 
@@ -612,7 +617,7 @@ public:
 	int processNodule() {
 		// for each slice in the map, process the vertices. 
 		// Check for stopping condition.
-
+		currentIteration++;
 		float totalFunctional = 0;
 		typedef std::map<int, CandidateNoduleSlice<TPoint>>::iterator itType;
 		for (itType iterator = sliceMap.begin(); iterator != sliceMap.end(); iterator++) {
@@ -625,8 +630,8 @@ public:
 				noduleSlice.process();  // calculates all the energies.
 				totalFunctional += noduleSlice.eFunctional;
 				noduleSlice.evolveSlice(evolvedNodulePointset);
-				// std::string filename = "TestLabel_" + std::to_string(noduleSlice.midPoint[2]) + ".png";
-				//utility::WriteBinaryLabelImage(evolvedNodulePointset, width, height, noduleSlice.midPoint[2], "results/TestLabel.png");
+				std::string filename = "TestLabel_" + std::to_string(noduleSlice.midPoint[2]) + "_" + std::to_string(currentIteration) + ".png";
+				utility::WriteBinaryLabelImage(evolvedNodulePointset, width, height, noduleSlice.midPoint[2], "results/TestLabel.png");
 			//}
 		}
 		std::cout << "Total functional is " << totalFunctional << std::endl;
@@ -639,6 +644,9 @@ public:
 		// Replace the nodulePointset with the evolved pointset. 
 		// FIXME: Figure if i need a pointer or value replacement. For now pointer seems to be working fine.
 		nodulePointset = evolvedNodulePointset;
+		MeshType::Pointer meshtest = utility::ConvertPointsetToMesh(nodulePointset);
+		std::string meshFile = "evolvedMesh_" + std::to_string(currentIteration) + ".vtk";
+		utility::WriteITKMesh(meshtest, meshFile);
 		prevTotalFunctional = totalFunctional;
 		return 0;
 	}
@@ -646,14 +654,14 @@ public:
 	void writeImageSlices() {
 		typedef std::map<int, CandidateNoduleSlice<TPoint>>::iterator itType;
 		for (itType iterator = sliceMap.begin(); iterator != sliceMap.end(); iterator++) {
-			if (iterator->first == 11) { // only write out this for now.
+			//if (iterator->first == 11) { // only write out this for now.
 				CandidateNoduleSlice<TPoint> noduleSlice = iterator->second;
 				std::cout << "Writing slice: " << noduleSlice.midPoint[2];
 
 				//std::string filename = sprintf("results/Slice_%d.png", noduleSlice.midPoint[2]);
 				std::string filename = "results/TestSlice_" + std::to_string((int)noduleSlice.midPoint[2]) + ".png";
 				utility::WriteSliceAsPNG(image, noduleSlice.midPoint[2], filename);
-			}
+			//}
 		}
 	}
 
