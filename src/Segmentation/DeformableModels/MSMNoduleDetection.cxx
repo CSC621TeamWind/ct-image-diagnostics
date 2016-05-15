@@ -315,7 +315,7 @@ public:
 			ImageType3D::PixelType pixelValue3D = image->GetPixel(pixelIndex3D);
 			//std::cout << pixelValue3D << " ";
 			vertices[i - minId].ePotential = pixelValue3D;
-			//std::cout << "The potential energy is " << vertices[i - minId].ePotential << std::endl;
+			std::cout << "The potential energy is " << vertices[i - minId].ePotential << std::endl;
 			
 			// Compute the value of the neighborhood. 
 			for (int j = 0; j < nNeighborhood; j++) {
@@ -521,6 +521,15 @@ public:
 	float prevTotalFunctional = 0;
 	int currentIteration = 0;
 
+	// Nodule characteristics:
+	float surfaceArea; // calculated by mesh
+	float volume;		// calculated by mesh	
+	float sphericity;  
+	float meanIntensity;
+	float sdIntensity;
+	float skewness;
+	float kurtosis;
+
 	CandidateNodule() { }
 	CandidateNodule(TPoint point, float maxRadius, float minRadius) {
 		this.seedPoint = point;
@@ -630,8 +639,8 @@ public:
 				noduleSlice.process();  // calculates all the energies.
 				totalFunctional += noduleSlice.eFunctional;
 				noduleSlice.evolveSlice(evolvedNodulePointset);
-				std::string filename = "TestLabel_" + std::to_string(noduleSlice.midPoint[2]) + "_" + std::to_string(currentIteration) + ".png";
-				utility::WriteBinaryLabelImage(evolvedNodulePointset, width, height, noduleSlice.midPoint[2], "results/TestLabel.png");
+				//std::string filename = "TestLabel_" + std::to_string(noduleSlice.midPoint[2]) + "_" + std::to_string(currentIteration) + ".png";
+				//utility::WriteBinaryLabelImage(evolvedNodulePointset, width, height, noduleSlice.midPoint[2], "results/TestLabel.png");
 			//}
 		}
 		std::cout << "Total functional is " << totalFunctional << std::endl;
@@ -644,9 +653,9 @@ public:
 		// Replace the nodulePointset with the evolved pointset. 
 		// FIXME: Figure if i need a pointer or value replacement. For now pointer seems to be working fine.
 		nodulePointset = evolvedNodulePointset;
-		MeshType::Pointer meshtest = utility::ConvertPointsetToMesh(nodulePointset);
+		/*MeshType::Pointer meshtest = utility::ConvertPointsetToMesh(nodulePointset);
 		std::string meshFile = "evolvedMesh_" + std::to_string(currentIteration) + ".vtk";
-		utility::WriteITKMesh(meshtest, meshFile);
+		utility::WriteITKMesh(meshtest, meshFile);*/
 		prevTotalFunctional = totalFunctional;
 		return 0;
 	}
@@ -706,7 +715,7 @@ public :
 			CandidateNodule<TPoint> nodule = iterator->second;
 			PointSetType::Pointer  spherePointSet = PointSetType::New();
 			spherePointSet = nodule.generateInitialSphereModel(nodule.maxRadius);
-			nodule.writeImageSlices();
+			//nodule.writeImageSlices();
 
 			// Main processing starts here.
 			for (int k = 0; k < numIterations; k++) {
