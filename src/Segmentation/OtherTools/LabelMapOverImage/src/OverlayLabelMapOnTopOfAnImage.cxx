@@ -44,7 +44,7 @@ int main( int argc, char* argv[] )
   FilterType::Pointer filter = FilterType::New();
   filter->SetInput( converter->GetOutput() );
   filter->SetFeatureImage( reader->GetOutput() );
-  filter->SetOpacity( 0.5 );
+  filter->SetOpacity( 1.0 );
 
   typedef itk::ImageFileWriter< FilterType::OutputImageType > WriterType;
   WriterType::Pointer writer = WriterType::New();

@@ -22,7 +22,7 @@ const std::string TEMP_CANDIDATE_NODULE_FILE = "../../CandidateNodules.txt";
 const int TEMP_NODULE_RADUIS = 40;  // the temporary radius of the nodule in question in pixels.
 const int TEMP_SEEDPOINT[] = { 112, 229, 83 };  // the center point of the nodule detected through preprocessing.
 const int TEMP_NODULE_SLICES = 22;  // number of image slices over which the nodule is present.
-const int TEMP_n = 20;  // number of mass points per image slice.
+const int TEMP_n = 30;  // number of mass points per image slice.
 
 // Globals
 ImageType3D::Pointer image;
@@ -33,7 +33,7 @@ int depth;
 
 const float k = 0.01;   // Spring constant.
 const float alpha = 0.2;
-const float beta = 0.2;
+const float beta = 0.3;
 const float gamma = 0.2;
 const float delta = 0.2;
 const float epsilon = 0.2;
@@ -315,7 +315,7 @@ public:
 			ImageType3D::PixelType pixelValue3D = image->GetPixel(pixelIndex3D);
 			//std::cout << pixelValue3D << " ";
 			vertices[i - minId].ePotential = pixelValue3D;
-			std::cout << "The potential energy is " << vertices[i - minId].ePotential << std::endl;
+			//std::cout << "The potential energy is " << vertices[i - minId].ePotential << std::endl;
 			
 			// Compute the value of the neighborhood. 
 			for (int j = 0; j < nNeighborhood; j++) {
@@ -455,7 +455,7 @@ public:
 		avgDist = avgDist / TEMP_n;  // Find the average of all the distances of the point from the midpoint.
 		//std::cout << "The average is " << avgDist;
 		sd = standard_deviation(seedPointDist, TEMP_n);
-		std::cout << "The slice number is " << sliceNumber << " min id " << minId << "Max id " << maxId << std::endl;
+		//std::cout << "The slice number is " << sliceNumber << " min id " << minId << "Max id " << maxId << std::endl;
 		for (int i = minId; i <= maxId; i++) {
 			// Finding the distance between two points. 
 			if (seedPointDist[i - minId] > avgDist + sd) {
@@ -548,16 +548,16 @@ public:
 		PointSetType::Pointer spherePointSet = PointSetType::New();
 		// Set the initial point ID
 		int spherePointSetID = 0;
-		int zFactor = -(radius / 2);
+		int zFactor = -(numSlices / 2);
 		int M = numSlices;
 		int N = TEMP_n;
 		// Generate the spherical mass points model.
-		for (int m = 1; m <= M; m++) {
+		for (int m = 1; m <= M; m++) { // Check 0/1 difference
 			std::cout << "Processing slice no: " << m << std::endl;
 			CandidateNoduleSlice<TPoint> noduleSlice;
 			noduleSlice.sliceNumber = m;
-			noduleSlice.minId = spherePointSetID + 1;
-			noduleSlice.maxId = spherePointSetID + TEMP_n;
+			noduleSlice.minId = spherePointSetID;
+			noduleSlice.maxId = spherePointSetID + TEMP_n - 1;
 			noduleSlice.midPoint[0] = seedPoint[0];
 			noduleSlice.midPoint[1] = seedPoint[1];
 			noduleSlice.midPoint[2] = seedPoint[2] + zFactor;
@@ -574,9 +574,9 @@ public:
 				pSphere[2] = seedPoint[2] + zFactor;  // radius * cos(itk::Math::pi * (float)m / M); // z
 
 				// Set the ID and Point 
-				spherePointSetID++;
+				
 				spherePointSet->SetPoint(spherePointSetID, pSphere);
-
+				spherePointSetID++;
 				// Set the point data
 				//spherePointSet->SetPointData(spherePointSetID, 255);  // All points are white for now.
 
@@ -609,13 +609,16 @@ public:
 			zFactor++; // Z refers to the index of the axial slice within the dataset.
 			std::cout << std::endl;
 			sliceMap[m] = noduleSlice;  // Add the slice into the nodule set. Associate sliceNumber -> CandidateNodule.
+			std::string filename = "results/InitialLabel_" + std::to_string(depth - noduleSlice.midPoint[2]) + "_" + std::to_string(currentIteration) + ".png";
+			utility::WriteBinaryLabelImage(spherePointSet, width, height, noduleSlice.midPoint[2], filename);
 		}
 		nodulePointset = spherePointSet;
 		// Testing - Try writing out the pointset and then exit.
-		/*MeshType::Pointer meshtest = utility::ConvertPointsetToMesh(spherePointSet);
-		utility::WriteITKMesh(meshtest, "testmesh.vtk");
-		//utility::WriteVTKUnstructuredGrid(meshtest, "testmeshVTU.vtu");
-		exit(1);*/
+		MeshType::Pointer meshtest = utility::ConvertPointsetToTriangleCellMesh2(spherePointSet, TEMP_n);
+		utility::WriteITKMesh(meshtest, "InitialSphereModel.vtk");
+		//utility::CalculateAreaAndVolume(meshtest);
+		utility::CalculateBoundingBox(spherePointSet);
+		//utility::WriteVTKUnstructuredGrid(meshtest, "testmeshTriangleVTU.vtu");
 		return spherePointSet;
 	}
 
@@ -630,32 +633,29 @@ public:
 		float totalFunctional = 0;
 		typedef std::map<int, CandidateNoduleSlice<TPoint>>::iterator itType;
 		for (itType iterator = sliceMap.begin(); iterator != sliceMap.end(); iterator++) {
-			//if (iterator->first == 11) { // TODO: Figure out which label maps need to be written out.
 				CandidateNoduleSlice<TPoint> noduleSlice = iterator->second;
 				std::cout << "Processing slice: " << noduleSlice.sliceNumber;
 				noduleSlice.nodulePointset = PointSetType::New();
 				noduleSlice.nodulePointset = nodulePointset;
-				//utility::WriteBinaryLabelImage(nodulePointset, width, height, noduleSlice.midPoint[2], "results/TestLabel.png");
 				noduleSlice.process();  // calculates all the energies.
 				totalFunctional += noduleSlice.eFunctional;
 				noduleSlice.evolveSlice(evolvedNodulePointset);
-				//std::string filename = "TestLabel_" + std::to_string(noduleSlice.midPoint[2]) + "_" + std::to_string(currentIteration) + ".png";
-				//utility::WriteBinaryLabelImage(evolvedNodulePointset, width, height, noduleSlice.midPoint[2], "results/TestLabel.png");
-			//}
+				std::string filename = "results/TestLabel_" + std::to_string(depth - noduleSlice.midPoint[2]) + "_" + std::to_string(currentIteration) + ".png";
+				utility::WriteBinaryLabelImage(evolvedNodulePointset, width, height, noduleSlice.midPoint[2], filename);
 		}
 		std::cout << "Total functional is " << totalFunctional << std::endl;
 		std::cout << "Previous functional is " << prevTotalFunctional << std::endl;
 
-		if (prevTotalFunctional < totalFunctional) {
+		if (prevTotalFunctional + 250 < totalFunctional) {    // Make sure there is a significant difference in functional energy
 			std::cout << "Stopping condition reached.";
 			return 1;
 		}
 		// Replace the nodulePointset with the evolved pointset. 
 		// FIXME: Figure if i need a pointer or value replacement. For now pointer seems to be working fine.
 		nodulePointset = evolvedNodulePointset;
-		/*MeshType::Pointer meshtest = utility::ConvertPointsetToMesh(nodulePointset);
-		std::string meshFile = "evolvedMesh_" + std::to_string(currentIteration) + ".vtk";
-		utility::WriteITKMesh(meshtest, meshFile);*/
+		MeshType::Pointer meshtest = utility::ConvertPointsetToTriangleCellMesh2(nodulePointset, TEMP_n);
+		std::string meshFile = "NewMesh_" + std::to_string(currentIteration) + ".vtk";
+		utility::WriteITKMesh(meshtest, meshFile);
 		prevTotalFunctional = totalFunctional;
 		return 0;
 	}
@@ -665,10 +665,10 @@ public:
 		for (itType iterator = sliceMap.begin(); iterator != sliceMap.end(); iterator++) {
 			//if (iterator->first == 11) { // only write out this for now.
 				CandidateNoduleSlice<TPoint> noduleSlice = iterator->second;
-				std::cout << "Writing slice: " << noduleSlice.midPoint[2];
+				std::cout << "Writing slice: " << depth - noduleSlice.midPoint[2];
 
 				//std::string filename = sprintf("results/Slice_%d.png", noduleSlice.midPoint[2]);
-				std::string filename = "results/TestSlice_" + std::to_string((int)noduleSlice.midPoint[2]) + ".png";
+				std::string filename = "results/TestSlice_" + std::to_string((int)depth - noduleSlice.midPoint[2]) + ".png";
 				utility::WriteSliceAsPNG(image, noduleSlice.midPoint[2], filename);
 			//}
 		}
@@ -680,7 +680,6 @@ public:
 		for (itType iterator = sliceMap.begin(); iterator != sliceMap.end(); iterator++) {
 			CandidateNoduleSlice<TPoint> noduleSlice = iterator->second;
 			std::cout << "Summing up functional energy of slice: " << noduleSlice.sliceNumber;
-			std::cout << noduleSlice.vertices[0].eFunctional << "SOMETHING";
 			for (int i = 0; i < TEMP_n; i++) {
 				// Calculates the weighted sum of all the energies.
 				totalEnergy = totalEnergy + (iterator->second).vertices[i].eFunctional;
@@ -715,7 +714,7 @@ public :
 			CandidateNodule<TPoint> nodule = iterator->second;
 			PointSetType::Pointer  spherePointSet = PointSetType::New();
 			spherePointSet = nodule.generateInitialSphereModel(nodule.maxRadius);
-			//nodule.writeImageSlices();
+			nodule.writeImageSlices();
 
 			// Main processing starts here.
 			for (int k = 0; k < numIterations; k++) {
@@ -861,9 +860,11 @@ int main(int argc, char *argv[]) {
 	width = imageSize[0];
 	height = imageSize[1];
 	depth = imageSize[2];
-	std::cout << "Width is " << width << " HEight is " << height << " Depth is " << depth;
+	std::cout << "Width is " << width << ", height is " << height << ", depth is " << depth << std::endl;
+
 	// Set origin and spacing for viewing.
 	std::cout << "The origin is " << image->GetOrigin(); 
+	std::cout << "The spacing is " << image->GetSpacing();
 
 	// Initialize the set of candidate nodules.
 	DeformableMSMSegmentation<itk::Point<PixelType, 3>> seg;
@@ -882,19 +883,6 @@ int main(int argc, char *argv[]) {
 	}
 
 	seg.process();
-
-	/*CandidateNodule<itk::Point<PixelType, 3>> nodule;
-	nodule.seedPoint[0] = TEMP_SEEDPOINT[0];
-	nodule.seedPoint[1] = TEMP_SEEDPOINT[1];
-	nodule.seedPoint[2] = TEMP_SEEDPOINT[2];
-	nodule.numSlices = TEMP_NODULE_SLICES;
-
-	// Create the nodule list.
-
-	DeformableMSMSegmentation<itk::Point<PixelType, 3>> seg;
-	seg.setIterations(3);
-	seg.addNodule(nodule);
-	seg.process();*/
 
   }
   catch (itk::ExceptionObject &ex) {

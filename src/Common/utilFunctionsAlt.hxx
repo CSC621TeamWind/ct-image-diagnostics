@@ -1,6 +1,7 @@
 #ifndef utilFunctionsAlt_hxx
 #define utilFunctionsAlt_hxx
 
+// ITK
 #include "itkImage.h"
 #include "itkGDCMImageIO.h"
 #include "itkGDCMSeriesFileNames.h"
@@ -17,14 +18,19 @@
 #include "itkTriangleCell.h"
 #include "itkQuadrilateralCell.h"
 #include "itkMeshFileWriter.h"
+#include "itkSimplexMesh.h"
+#include "itkTriangleMeshToSimplexMeshFilter.h"
+#include "itkSimplexMeshVolumeCalculator.h"
+#include "itkRegularSphereMeshSource.h"
+#include "itkBoundingBox.h"
 
 // VTK
 #include "QuickView.h"
 #include "vtkVersion.h"
-#include <vtkCellArray.h>
-#include <vtkSmartPointer.h>
-#include <vtkUnstructuredGrid.h>
-#include <vtkXMLUnstructuredGridWriter.h>
+#include "vtkCellArray.h"
+#include "vtkSmartPointer.h"
+#include "vtkUnstructuredGrid.h"
+#include "vtkXMLUnstructuredGridWriter.h"
 
 typedef float PixelType;
 typedef itk::Image< PixelType, 3 > ImageType3D;
@@ -34,8 +40,10 @@ typedef itk::ExtractImageFilter < ImageType3D, ImageType2D > FilterType2D;
 typedef itk::PointSet< PixelType, 3 > PointSetType;
 typedef itk::Image< unsigned char, 2 >  BinaryImageType;
 typedef itk::Mesh< float, 3 >   MeshType;
+typedef itk::SimplexMesh< float, 3 > SimplexType;
+typedef itk::TriangleMeshToSimplexMeshFilter< MeshType, SimplexType > TConvert;
+typedef itk::SimplexMeshVolumeCalculator< SimplexType > TVolume;
 
-//static void ConvertMeshToUnstructuredGrid(MeshType::Pointer, vtkUnstructuredGrid*);
 
 namespace utility {
 
@@ -305,7 +313,124 @@ namespace utility {
 	  }
   };
 
-  /* Converts a pointset to a mesh and writes it out as a vtu file.
+  /* Converts a pointset to a mesh with triangle cells. Using TriangleCells since area and volume calculations seem
+  to require it.
+  */
+  MeshType::Pointer ConvertPointsetToTriangleCellMesh2(PointSetType::Pointer pointSet, int n) {
+
+	  MeshType::Pointer mesh = MeshType::New();
+
+	  // Add the points to the mesh
+	  int numPoints = pointSet->GetNumberOfPoints();
+	  std::cout << "Num points are " << numPoints << std::endl;
+	  for (int i = 0; i < numPoints; i++) {
+		  MeshType::PointType p = pointSet->GetPoint(i);
+		  p[2] = p[2] * 2.5;
+		  mesh->SetPoint(i, p);
+		  //std::cout << p << std::endl;
+		  // FIXME: Make sure we dont have any wrong values.
+		  if (p[0] < -5000 || p[1] < -5000 || p[2] < -5000 || p[0] > 5000 || p[1] > 5000 || p[2] > 5000) {
+			  std::cout << "Aborting. Potential wrong value at index " << i;
+			  exit(1);
+		  }
+	  }
+
+	  int cellIndex = 0;
+	  typedef MeshType::CellType::CellAutoPointer CellAutoPointer;
+	  typedef itk::TriangleCell< MeshType::CellType > TriangleType;
+	  for (int i = 0; i <numPoints - n; i++) {
+		  CellAutoPointer triangle;
+		  triangle.TakeOwnership(new TriangleType);
+		  triangle->SetPointId(0, i);
+		  triangle->SetPointId(1, i + n);
+		  int offset = i + n + 1;
+		  if (offset%n == 0) {
+			  offset = i + 1;
+		  }
+		  //cout << "Triangle " << i << "  " << (i + n) << "   " << offset;
+		  triangle->SetPointId(2, offset);
+		  mesh->SetCell(cellIndex, triangle);
+		  cellIndex++;
+
+		  // Create the other half of the quad
+		  CellAutoPointer triangle2;
+		  triangle2.TakeOwnership(new TriangleType);
+		  triangle2->SetPointId(0, i);
+		  int offset2 = i + 1;
+		  if ((i) % n == (n-1)) {
+			  offset2 = i - (n - 1);
+		  }
+		  triangle2->SetPointId(1, offset2);
+		  triangle2->SetPointId(2, offset);
+		  mesh->SetCell(cellIndex, triangle2);
+		  cellIndex++;
+		  //cout << "Alt Triangle " << i << "  " << offset2 << "   " << offset << std::endl;
+	  }
+
+	  std::cout << "Created a mesh";
+	  return mesh;
+  }
+
+
+  /* Converts a pointset to a mesh with triangle cells. Using TriangleCells since area and volume calculations seem
+	 to require it.
+  */
+  MeshType::Pointer ConvertPointsetToTriangleCellMesh(PointSetType::Pointer pointSet, int n) {
+
+	  MeshType::Pointer mesh = MeshType::New();
+
+	  // Add the points to the mesh
+	  int numPoints = pointSet->GetNumberOfPoints();
+	  std::cout << "Num points are " << numPoints << std::endl;
+	  for (int i = 1; i < numPoints; i++) {
+		  MeshType::PointType p = pointSet->GetPoint(i);
+		  p[2] = p[2] * 2.5;
+		  mesh->SetPoint(i, p);
+		  //std::cout << p << std::endl;
+		  // FIXME: Make sure we dont have any wrong values.
+		  if (p[0] < -5000 || p[1] < -5000 || p[2] < -5000 || p[0] > 5000 || p[1] > 5000 || p[2] > 5000) {
+			  std::cout << "Aborting. Potential wrong value at index " << i;
+			  exit(1);
+		  }
+	  }
+
+	  int cellIndex = 0;
+	  typedef MeshType::CellType::CellAutoPointer CellAutoPointer;
+	  typedef itk::TriangleCell< MeshType::CellType > TriangleType;
+	  for (int i = 1; i <numPoints-n; i++) {
+		  CellAutoPointer triangle;
+		  triangle.TakeOwnership(new TriangleType);
+		  triangle->SetPointId(0, i);
+		  triangle->SetPointId(1, i + n);  
+		  int offset = i + n + 1;
+		  if (offset%n == 1) {
+			  offset = i + 1;
+		  }
+		  //cout << "Triangle " << i << "  " << (i + n) << "   " << offset;
+		  triangle->SetPointId(2, offset);
+		  mesh->SetCell(cellIndex, triangle);
+		  cellIndex++;
+
+		  // Create the other half of the quad
+		  CellAutoPointer triangle2;
+		  triangle2.TakeOwnership(new TriangleType);
+		  triangle2->SetPointId(0, i);
+		  int offset2 = i + 1;
+		  if ((i) % n == 0) {
+			  offset2 = i - (n-1);
+		  }
+		  triangle2->SetPointId(1, offset2);
+		  triangle2->SetPointId(2, offset);
+		  mesh->SetCell(cellIndex, triangle2);
+		  cellIndex++;
+		  //cout << "Alt Triangle " << i << "  " << offset2 << "   " << offset << std::endl;
+	  }
+
+	  std::cout << "Created a mesh";
+	  return mesh;
+  }
+
+  /* Converts a pointset to a mesh.
   */
   MeshType::Pointer ConvertPointsetToMesh(PointSetType::Pointer pointSet) {
 
@@ -315,7 +440,7 @@ namespace utility {
 	  int numPoints = pointSet->GetNumberOfPoints();
 	  for (int i = 1; i < numPoints; i++) {
 		  MeshType::PointType p = pointSet->GetPoint(i);
-		  p[2] = p[2] * 10;
+		  p[2] = p[2] * 2.5;
 		  mesh->SetPoint(i, p);
 		  //std::cout << p << std::endl;
 		  // FIXME: Make sure we dont have any wrong values.
@@ -330,11 +455,11 @@ namespace utility {
 	  int cellIndex = 0;
 	  typedef MeshType::CellType::CellAutoPointer CellAutoPointer;
 	  typedef itk::LineCell< MeshType::CellType > LineType;
-	  for (int i = 1; i < numPoints-1; i++) {
+	  for (int i = 1; i < numPoints - 1; i++) {
 		  CellAutoPointer line;
 		  line.TakeOwnership(new LineType);
 		  line->SetPointId(0, i);
-		  line->SetPointId(1, i+1);
+		  line->SetPointId(1, i + 1);
 		  mesh->SetCell(cellIndex, line);
 		  cellIndex++;
 		  // connect to longitudinal points.
@@ -342,7 +467,7 @@ namespace utility {
 			  CellAutoPointer line2;
 			  line2.TakeOwnership(new LineType);
 			  line2->SetPointId(0, i);
-			  line2->SetPointId(1, i-20);
+			  line2->SetPointId(1, i - 20);
 			  mesh->SetCell(cellIndex, line2);
 			  cellIndex++;
 		  }
@@ -351,6 +476,7 @@ namespace utility {
 	  std::cout << "Created a mesh";
 	  return mesh;
   }
+
 
   /* Write out an ITK mesh
   */
@@ -482,8 +608,86 @@ namespace utility {
 	  std::cout << "Finished writing out the mesh" << std::endl;
   }
 
+  void CalculateBoundingBox(PointSetType::Pointer pointset) {
+	  typedef itk::BoundingBox<itk::IdentifierType, 3, PixelType> BoundingBoxType;
+	  BoundingBoxType::Pointer boundingBox = BoundingBoxType::New();
+	  boundingBox->SetPoints(pointset->GetPoints());
+	  boundingBox->ComputeBoundingBox();
+	  itk::Point<float, 3 > p; 
+	  p[0] = 0;
+	  p[1] = 0;
+	  p[2] = 0;
 
-  /* Create a test black image with two white squares
+	  for (int i = 0; i < pointset->GetNumberOfPoints(); i++) {
+		  cout << pointset->GetPoint(i) << "  ";
+	  }
+
+	  std::cout << "bounds: " << boundingBox->GetBounds() << std::endl;
+	  std::cout << "center: " << boundingBox->GetCenter() << std::endl;
+	  std::cout << "diagonal length squared: " << boundingBox->GetDiagonalLength2() << std::endl;
+  }
+
+  void CalculateAreaAndVolume(MeshType::Pointer triangleMesh) {
+
+	  // Ensure that all cells of the mesh are triangles.
+	  for (MeshType::CellsContainerIterator it = triangleMesh->GetCells()->Begin();
+	  it != triangleMesh->GetCells()->End();
+		  ++it)
+	  {
+		  MeshType::CellAutoPointer cell;
+		  triangleMesh->GetCell(it->Index(), cell);
+		  if (3 != cell->GetNumberOfPoints())
+		  {
+			  std::cerr << "ERROR: All cells must be trianglar." << std::endl;
+			  exit(1);
+		  }
+	  } 
+	  /*MeshType::Pointer mesh = MeshType::New();
+	  // Create points
+	  MeshType::PointType p0, p1, p2, p3;
+
+	  p0[0] = -1.0; p0[1] = -1.0; p0[2] = 0.0; // first  point ( -1, -1, 0 )
+	  p1[0] = 1.0; p1[1] = -1.0; p1[2] = 0.0; // second point (  1, -1, 0 )
+	  p2[0] = 1.0; p2[1] = 1.0; p2[2] = 0.0; // third  point (  1,  1, 0 )
+
+	  mesh->SetPoint(0, p0);
+	  mesh->SetPoint(1, p1);
+	  mesh->SetPoint(2, p2);
+
+	  typedef itk::TriangleCell<MeshType::CellType> TriangleType;
+	  typedef MeshType::CellType::CellAutoPointer CellAutoPointer;
+	  CellAutoPointer line0;
+	  line0.TakeOwnership(new TriangleType);
+	  line0->SetPointId(0, 0); // line between points 0 and 1
+	  line0->SetPointId(1, 1);
+	  line0->SetPointId(2, 2);
+	  mesh->SetCell(0, line0);*/
+
+
+	  // Convert the triangle mesh to a simplex mesh.
+	  TConvert::Pointer convert = TConvert::New();
+	  convert->SetInput(triangleMesh);
+	  try
+	  {
+		  convert->Update();
+	  }
+	  catch (itk::ExceptionObject &ex) {
+		  std::cout << "The program encountered an exception: " << ex << std::endl;
+	  }
+	  
+	  // Calculate the volume and area of the simplex mesh.
+	 /* TVolume::Pointer volume = TVolume::New();
+	  volume->SetSimplexMesh(convert->GetOutput());
+	  volume->Compute();
+
+	  // Compare with the volume and area of an ideal sphere.
+	  //std::cout << "Ideal Volume: " << 4.0 / 3.0*M_PI*pow(5.0, 3) << std::endl;
+	  std::cout << "Mesh Volume: " << volume->GetVolume() << std::endl;
+	  //std::cout << "Ideal Surface Area: " << 4.0*M_PI*pow(5.0, 2) << std::endl;
+	  std::cout << "Mesh Surface Area: " << volume->GetArea() << std::endl;*/
+
+  }
+  /* DEBUG : Create a test black image with two white squares
   */
   void CreateImage(ImageType2D::Pointer image )
   {
