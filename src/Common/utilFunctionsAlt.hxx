@@ -316,7 +316,7 @@ namespace utility {
   /* Converts a pointset to a mesh with triangle cells. Using TriangleCells since area and volume calculations seem
   to require it.
   */
-  MeshType::Pointer ConvertPointsetToTriangleCellMesh2(PointSetType::Pointer pointSet, int n) {
+  MeshType::Pointer ConvertPointsetToTriangleCellMesh2(PointSetType::Pointer pointSet, int n, ImageType3D::SpacingType spacing) {
 
 	  MeshType::Pointer mesh = MeshType::New();
 
@@ -325,7 +325,9 @@ namespace utility {
 	  std::cout << "Num points are " << numPoints << std::endl;
 	  for (int i = 0; i < numPoints; i++) {
 		  MeshType::PointType p = pointSet->GetPoint(i);
-		  p[2] = p[2] * 2.5;
+		  p[0] = p[0] * spacing[0];
+		  p[1] = p[1] * spacing[1];
+		  p[2] = p[2] * spacing[2];
 		  mesh->SetPoint(i, p);
 		  //std::cout << p << std::endl;
 		  // FIXME: Make sure we dont have any wrong values.
@@ -430,17 +432,19 @@ namespace utility {
 	  return mesh;
   }
 
-  /* Converts a pointset to a mesh.
+  /* Converts a pointset to a mesh - uses LineCells
   */
-  MeshType::Pointer ConvertPointsetToMesh(PointSetType::Pointer pointSet) {
+  MeshType::Pointer ConvertPointsetToMesh(PointSetType::Pointer pointSet, int n, ImageType3D::SpacingType spacing) {
 
 	  MeshType::Pointer mesh = MeshType::New();
 
 	  // Add the points to the mesh
 	  int numPoints = pointSet->GetNumberOfPoints();
-	  for (int i = 1; i < numPoints; i++) {
+	  for (int i = 0; i < numPoints; i++) {
 		  MeshType::PointType p = pointSet->GetPoint(i);
-		  p[2] = p[2] * 2.5;
+		  p[0] = p[0] * spacing[0];
+		  p[1] = p[1] * spacing[1];
+		  p[2] = p[2] * spacing[2];
 		  mesh->SetPoint(i, p);
 		  //std::cout << p << std::endl;
 		  // FIXME: Make sure we dont have any wrong values.
@@ -455,7 +459,7 @@ namespace utility {
 	  int cellIndex = 0;
 	  typedef MeshType::CellType::CellAutoPointer CellAutoPointer;
 	  typedef itk::LineCell< MeshType::CellType > LineType;
-	  for (int i = 1; i < numPoints - 1; i++) {
+	  for (int i = 0; i < numPoints - 1; i++) {
 		  CellAutoPointer line;
 		  line.TakeOwnership(new LineType);
 		  line->SetPointId(0, i);
@@ -463,11 +467,11 @@ namespace utility {
 		  mesh->SetCell(cellIndex, line);
 		  cellIndex++;
 		  // connect to longitudinal points.
-		  if (i > 20) {
+		  if (i > n-1) {
 			  CellAutoPointer line2;
 			  line2.TakeOwnership(new LineType);
 			  line2->SetPointId(0, i);
-			  line2->SetPointId(1, i - 20);
+			  line2->SetPointId(1, i - n);
 			  mesh->SetCell(cellIndex, line2);
 			  cellIndex++;
 		  }
