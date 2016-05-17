@@ -9,7 +9,7 @@
 #include "itkGradientImageFilter.h"
 #include "itkVectorIndexSelectionCastImageFilter.h"
 #include "itkSobelEdgeDetectionImageFilter.h"
-
+#include "itkVersion.h"
 #include "utilFunctionsAlt.hxx" 
 /*
 Detection of nodules using stable mass-spring models.
@@ -22,7 +22,7 @@ const std::string TEMP_CANDIDATE_NODULE_FILE = "../../CandidateNodules.txt";
 const int TEMP_NODULE_RADUIS = 40;  // the temporary radius of the nodule in question in pixels.
 const int TEMP_SEEDPOINT[] = { 112, 229, 83 };  // the center point of the nodule detected through preprocessing.
 const int TEMP_NODULE_SLICES = 22;  // number of image slices over which the nodule is present.
-const int TEMP_n = 30;  // number of mass points per image slice.
+const int TEMP_n = 20;  // number of mass points per image slice.
 
 // Globals
 ImageType3D::Pointer image;
@@ -614,8 +614,9 @@ public:
 		}
 		nodulePointset = spherePointSet;
 		// Testing - Try writing out the pointset and then exit.
-		MeshType::Pointer meshtest = utility::ConvertPointsetToTriangleCellMesh2(spherePointSet, TEMP_n);
-		utility::WriteITKMesh(meshtest, "InitialSphereModel.vtk");
+		MeshType::Pointer meshtest = utility::ConvertPointsetToTriangleCellMesh2(spherePointSet, TEMP_n, image->GetSpacing());
+		meshtest = utility::ConvertPointsetToMesh(spherePointSet, TEMP_n, image->GetSpacing());
+		utility::WriteITKMesh(meshtest, "InitialSphereModelRescaled.vtk");
 		//utility::CalculateAreaAndVolume(meshtest);
 		utility::CalculateBoundingBox(spherePointSet);
 		//utility::WriteVTKUnstructuredGrid(meshtest, "testmeshTriangleVTU.vtu");
@@ -646,14 +647,14 @@ public:
 		std::cout << "Total functional is " << totalFunctional << std::endl;
 		std::cout << "Previous functional is " << prevTotalFunctional << std::endl;
 
-		if (prevTotalFunctional + 250 < totalFunctional) {    // Make sure there is a significant difference in functional energy
+		if (prevTotalFunctional + 400 < totalFunctional) {    // Make sure there is a significant difference in functional energy
 			std::cout << "Stopping condition reached.";
 			return 1;
 		}
 		// Replace the nodulePointset with the evolved pointset. 
 		// FIXME: Figure if i need a pointer or value replacement. For now pointer seems to be working fine.
 		nodulePointset = evolvedNodulePointset;
-		MeshType::Pointer meshtest = utility::ConvertPointsetToTriangleCellMesh2(nodulePointset, TEMP_n);
+		MeshType::Pointer meshtest = utility::ConvertPointsetToTriangleCellMesh2(nodulePointset, TEMP_n, image->GetSpacing());
 		std::string meshFile = "NewMesh_" + std::to_string(currentIteration) + ".vtk";
 		utility::WriteITKMesh(meshtest, meshFile);
 		prevTotalFunctional = totalFunctional;
@@ -666,8 +667,6 @@ public:
 			//if (iterator->first == 11) { // only write out this for now.
 				CandidateNoduleSlice<TPoint> noduleSlice = iterator->second;
 				std::cout << "Writing slice: " << depth - noduleSlice.midPoint[2];
-
-				//std::string filename = sprintf("results/Slice_%d.png", noduleSlice.midPoint[2]);
 				std::string filename = "results/TestSlice_" + std::to_string((int)depth - noduleSlice.midPoint[2]) + ".png";
 				utility::WriteSliceAsPNG(image, noduleSlice.midPoint[2], filename);
 			//}
