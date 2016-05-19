@@ -1,34 +1,4 @@
-/*=========================================================================
-*
-*  Copyright Insight Software Consortium
-*
-*  Licensed under the Apache License, Version 2.0 (the "License");
-*  you may not use this file except in compliance with the License.
-*  You may obtain a copy of the License at
-*
-*         http://www.apache.org/licenses/LICENSE-2.0.txt
-*
-*  Unless required by applicable law or agreed to in writing, software
-*  distributed under the License is distributed on an "AS IS" BASIS,
-*  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-*  See the License for the specific language governing permissions and
-*  limitations under the License.
-*
-*=========================================================================*/
 
-// Software Guide : BeginLatex
-//
-// This example is almost identical to
-// Section~\ref{sec:DeformableRegistration12}, with the difference that it
-// illustrates who to use the RegularStepGradientDescentOptimizer for a
-// deformable registration task.
-//
-// \index{itk::BSplineTransform}
-// \index{itk::BSplineTransform!DeformableRegistration}
-// \index{itk::RegularStepGradientDescentOptimizer}
-//
-//
-// Software Guide : EndLatex
 
 #include "itkImageRegistrationMethod.h"
 #include "itkMattesMutualInformationImageToImageMetric.h"
@@ -36,19 +6,8 @@
 #include "itkTimeProbesCollectorBase.h"
 #include "itkMemoryProbesCollectorBase.h"
 
-//  Software Guide : BeginLatex
-//
-//  The following are the most relevant headers to this example.
-//
-//  \index{itk::BSplineTransform!header}
-//  \index{itk::RegularStepGradientDescentOptimizer!header}
-//
-//  Software Guide : EndLatex
-
-// Software Guide : BeginCodeSnippet
 #include "itkBSplineTransform.h"
 #include "itkRegularStepGradientDescentOptimizer.h"
-// Software Guide : EndCodeSnippet
 
 #include "itkImageFileReader.h"
 #include "itkImageFileWriter.h"
@@ -58,9 +17,6 @@
 #include "itkSquaredDifferenceImageFilter.h"
 
 
-//  The following section of code implements a Command observer
-//  used to monitor the evolution of the registration process.
-//
 #include "itkCommand.h"
 class CommandIterationUpdate : public itk::Command
 {
@@ -120,20 +76,6 @@ int main(int argc, char *argv[])
 	typedef itk::Image< PixelType, ImageDimension >  MovingImageType;
 
 
-	//  Software Guide : BeginLatex
-	//
-	//  We instantiate now the type of the \code{BSplineTransform}
-	//  using as template parameters the type for coordinates representation, the
-	//  dimension of the space, and the order of the BSpline. We also intantiate
-	//  the type of the optimizer.
-	//
-	//  \index{BSplineTransform!New}
-	//  \index{BSplineTransform!Instantiation}
-	//  \index{RegularStepGradientDescentOptimizer!Instantiation}
-	//
-	//  Software Guide : EndLatex
-
-	// Software Guide : BeginCodeSnippet
 	const unsigned int SpaceDimension = ImageDimension;
 	const unsigned int SplineOrder = 3;
 	typedef double CoordinateRepType;
@@ -144,7 +86,6 @@ int main(int argc, char *argv[])
 		SplineOrder >     TransformType;
 
 	typedef itk::RegularStepGradientDescentOptimizer       OptimizerType;
-	// Software Guide : EndCodeSnippet
 
 
 	typedef itk::MattesMutualInformationImageToImageMetric<
@@ -381,17 +322,5 @@ int main(int argc, char *argv[])
 			return EXIT_FAILURE;
 		}
 	}
-
-
-
-	// Optionally, save the transform parameters in a file
-	if (argc > 9)
-	{
-		std::ofstream parametersFile;
-		parametersFile.open(argv[9]);
-		parametersFile << finalParameters << std::endl;
-		parametersFile.close();
-	}
-
 	return EXIT_SUCCESS;
 }
