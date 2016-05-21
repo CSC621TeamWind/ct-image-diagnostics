@@ -32,11 +32,11 @@ int width;
 int depth;
 
 const float k = 0.01;   // Spring constant.
-const float alpha = 0.2;
+const float alpha = 0.3;
 const float beta = 0.3;
-const float gamma = 0.2;
+const float gamma = 0.3;
 const float delta = 0.2;
-const float epsilon = 0.2;
+const float epsilon = 0.1;
 const int nNeighborhood = 8;
 
 // forward declaration
@@ -616,7 +616,7 @@ public:
 		// Testing - Try writing out the pointset and then exit.
 		MeshType::Pointer meshtest = utility::ConvertPointsetToTriangleCellMesh2(spherePointSet, TEMP_n, image->GetSpacing());
 		meshtest = utility::ConvertPointsetToMesh(spherePointSet, TEMP_n, image->GetSpacing());
-		utility::WriteITKMesh(meshtest, "InitialSphereModelRescaled.vtk");
+		utility::WriteITKMesh(meshtest, "results/InitialSphereModelRescaled.vtk");
 		//utility::CalculateAreaAndVolume(meshtest);
 		utility::CalculateBoundingBox(spherePointSet);
 		//utility::WriteVTKUnstructuredGrid(meshtest, "testmeshTriangleVTU.vtu");
@@ -647,7 +647,7 @@ public:
 		std::cout << "Total functional is " << totalFunctional << std::endl;
 		std::cout << "Previous functional is " << prevTotalFunctional << std::endl;
 
-		if (prevTotalFunctional + 400 < totalFunctional) {    // Make sure there is a significant difference in functional energy
+		if (prevTotalFunctional + 200 < totalFunctional) {    // Make sure there is a significant difference in functional energy
 			std::cout << "Stopping condition reached.";
 			return 1;
 		}
@@ -655,7 +655,7 @@ public:
 		// FIXME: Figure if i need a pointer or value replacement. For now pointer seems to be working fine.
 		nodulePointset = evolvedNodulePointset;
 		MeshType::Pointer meshtest = utility::ConvertPointsetToTriangleCellMesh2(nodulePointset, TEMP_n, image->GetSpacing());
-		std::string meshFile = "NewMesh_" + std::to_string(currentIteration) + ".vtk";
+		std::string meshFile = "results/NewMesh_" + std::to_string(currentIteration) + ".vtk";
 		utility::WriteITKMesh(meshtest, meshFile);
 		prevTotalFunctional = totalFunctional;
 		return 0;
