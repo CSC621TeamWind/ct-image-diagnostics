@@ -83,8 +83,6 @@ int main(int argc, char ** argv) {
     typedef DICOMImageType   InputImageType;
     typedef itk::Image< OutputPixelType, 3 >   OutputImageType;
 
-    typename itk::Image< InputImageType, 3 >::Pointer TempImageType;
-
     typedef itk::BinaryThresholdImageFilter< InputImageType, OutputImageType > ThresholdFilterType;
 
     typedef std::vector<ThresholdFilterType::Pointer> ThresholdVector;
@@ -111,6 +109,19 @@ int main(int argc, char ** argv) {
 
         DICOMImageType::Pointer image = reader->GetOutput();
 
+	typename DICOMImageType::SpacingType spacing = image->GetSpacing();
+
+	// Calculate minimum nodule size in integer coordinates
+	int minNoduleSize[3]; 
+	for (int i = 0; i < 3; i++) {
+		minNoduleSize[i] = 4 /* mm */ / spacing[i];
+	}
+
+	int maxNoduleSize[3]; 
+	for (int i = 0; i < 3; i++) {
+		maxNoduleSize[i] = 30 /* mm */ / spacing[i];
+	}
+
         typedef SegmentedLungFilter<DICOMImageType> LungFilter;
         typename LungFilter::Pointer lungs = LungFilter::New();
         typedef typename LungFilter::OutputImageType SegmentedLungImage;
@@ -132,7 +143,6 @@ int main(int argc, char ** argv) {
         maskedImage->SetOutsideValue(itk::NumericTraits<DICOMPixelType>::min());
         maskedImage->SetMaskImage(lungs->GetOutput());
         maskedImage->Update();
-
 
         typedef itk::BinaryBallStructuringElement<unsigned char, 3> StructuringElementType;
         StructuringElementType openingElement;
@@ -206,15 +216,33 @@ int main(int argc, char ** argv) {
                     mid[j] = (min[j] + max[j]) / 2;
                 }
 
-                // TODO: remove candidate nodules outside of desired size range
+		bool tooSmall = false; // XXX: dumb way to break out of outer loop
+		for (int j = 0; j < 3; j++) {
+			if (size[j] < minNoduleSize[j]) {
+				tooSmall = true;
+			}
+		}
+		if (tooSmall) {
+			continue;
+		}
+
+		bool tooBig = false;
+		for (int j = 0; j < 3; j++) {
+			if (size[j] > maxNoduleSize[j]) {
+				tooBig = true;
+			}
+		}
+		if (tooBig) {
+			continue;
+		}
 
                 // Output point to stdout
                 std::cout << mid[0] << ',' << mid[1] << ',' << mid[2] << ' ';
-                std::cout << size[0] << ',' << size[1] << ',' << size[2] << std::endl;
+                std::cout << size[0] << ", " << size[1] << ", " << size[2] << std::endl;
             }
 
 #           ifdef DISPLAY_SEGMENTED_IMAGES
-            displaySlice<SegmentedLungImage>(filter->GetOutput(), 2, 63);
+            displaySlice<SegmentedLungImage>(filter->GetOutput(), 2, 269 - 51);
 #           endif
         }
     }
