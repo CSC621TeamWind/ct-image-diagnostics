@@ -5,303 +5,44 @@
 #include <string>
 
 // FIXME: use quotes always?
+#include "itkImage.h"
 #include "itkPointSet.h"
 #include "itkPointSetToImageFilter.h"
 #include "itkImage.h"
 #include "utilFunctions.hxx" 
-#include <itkHistogramAlgorithmBase.h>
-#include <itkHistogramThresholdCalculator.h>
-#include <itkImageToHistogramFilter.h>
-#include <itkOtsuThresholdCalculator.h>
-#include <itkBinaryThresholdImageFilter.h>
-#include "itkImageSliceConstIteratorWithIndex.h"
-#include <itkBinaryFillholeImageFilter.h>
-#include "itkSliceBySliceImageFilter.h"
-#include "itkAndImageFilter.h"
-#include "itkBinaryFunctorImageFilter.h"
+#include "itkOtsuThresholdCalculator.h"
+#include "SegmentedLungFilter.hxx"
+#include "itkImageToImageFilter.h"
+#include "itkBinaryThresholdImageFilter.h"
+#include "itkImageFileWriter.h"
+#include "itkFlatStructuringElement.h"
+#include "itkBinaryErodeImageFilter.h"
+#include "itkMaskImageFilter.h"
+#include "itkBinaryMorphologicalOpeningImageFilter.h"
+#include "itkBinaryBallStructuringElement.h"
+#include "itkBinaryImageToLabelMapFilter.h"
+#include "itkConnectedComponentImageFilter.h"
+
+//#include "MultipleThresholding.hxx"
+
+#include "util.hxx"
 
 using std::cout;
 using std::cerr;
 using std::endl;
 using std::string;
+using std::vector;
 
 typedef itk::PointSet< PixelType, 3 > PointSetType;
 
-using itk::HistogramAlgorithmBase;
-using itk::SmartPointer;
-using itk::NumericTraits;
 using itk::Indent;
 using itk::Object;
-using itk::Statistics::ImageToHistogramFilter;
 using itk::BinaryThresholdImageFilter;
 using itk::SliceBySliceImageFilter;
 using itk::BinaryFunctorImageFilter;
 using itk::ExceptionObject;
 
-/**
- * Simple boolean operator to combine the mask of air with the torso mask
- */
-template <typename TPixel>
-class LungTorsoSegment
-{
-public:
-    ~LungTorsoSegment() {}
-
-    bool operator!=(const LungTorsoSegment &) const { return false; }
-
-    bool operator==(const LungTorsoSegment & other) const { return !( *this != other ); }
-
-    inline TPixel operator()(const TPixel & A, const TPixel & B) const
-    { return static_cast<TPixel>((!A) && B); }
-};
-
-/**
- * Calculate the optimal image threshold based on a histogram
- */
-template <typename THistogram>
-class OptimalThresholdCalculator : public HistogramAlgorithmBase<THistogram>
-{
-public:
-    typedef OptimalThresholdCalculator      Self;
-    typedef Object                          Superclass;
-    typedef SmartPointer<Self>              Pointer;
-    typedef SmartPointer<const Self>        ConstPointer;
-
-    typedef typename THistogram::MeasurementType       MeasurementType;
-    typedef typename THistogram::AbsoluteFrequencyType FrequencyType;
-    typedef size_t SizeValueType;
-
-    typedef typename NumericTraits< MeasurementType >::RealType MeanType;
-
-    itkNewMacro(Self);
-
-    itkTypeMacro(OptimalThresholdCalculator, Object);
-
-    typedef THistogram  HistogramType;
-
-    /** Typedef for the thresholds output */
-    typedef std::vector< MeasurementType > OutputType;
-
-    /** Returns the thresholds vector */
-    const OutputType & GetOutput() { return m_Output; }
-
-    const MeasurementType GetThreshold() const { return threshold; }
-
-    void Compute(void) ITK_OVERRIDE {
-        if ( this->GetInputHistogram()->GetSize().Size() != 1 ) {
-            itkExceptionMacro(<< "Histogram must be 1-dimensional.");
-        }
-
-        // FIXME: other types of divergence
-        bool converged = false;
-
-        for (int i = 0; i < max_iterations; i++) {
-            MeasurementType next_threshold = next();
-
-            MeasurementType delta = next_threshold - threshold;
-
-            threshold = next_threshold;
-
-            if ((-max_error) <= delta && delta <= max_error) {
-                converged = true;
-                break;
-            }
-        }
-
-        m_Output.resize(1);
-        m_Output[0] = threshold;
-    }
-
-    MeasurementType next() const {
-        typename THistogram::ConstPointer histogram = this->GetInputHistogram();
-        typename THistogram::ConstIterator iter = histogram->Begin();
-        typename THistogram::ConstIterator end = histogram->End();
-
-        MeasurementType foreground = NumericTraits<MeasurementType>::ZeroValue(); 
-        FrequencyType nforeground = NumericTraits<FrequencyType>::ZeroValue();
-
-        MeasurementType background = NumericTraits<MeasurementType>::ZeroValue(); 
-        FrequencyType nbackground = NumericTraits<FrequencyType>::ZeroValue();
-
-        while (iter != end) {
-            MeasurementType value = iter.GetMeasurementVector()[0];
-
-            if (value <= threshold) {
-                background += value * iter.GetFrequency();
-                nbackground += iter.getFrequency();
-            } else {
-                foreground += value * iter.GetFrequency();
-                nforeground += iter.getFrequency();
-            }
-        }
-
-        MeanType mean_foreground = static_cast<MeanType>(foreground) / static_cast<MeanType>(nforeground);
-        MeanType mean_background = static_cast<MeanType>(background) / static_cast<MeanType>(nbackground);
-
-        return static_cast<MeasurementType> ((mean_foreground + mean_background) / 2);
-    }
-
-    OptimalThresholdCalculator(MeasurementType initial_threshold) {
-        threshold = initial_threshold;
-        max_error = static_cast<MeasurementType>(0.001);
-        max_iterations = NumericTraits<SizeValueType>::max() - 1;
-    }
-protected:
-    virtual ~OptimalThresholdCalculator() {}
-
-    void PrintSelf(std::ostream & os, Indent indent) const ITK_OVERRIDE {
-        Superclass::PrintSelf(os, indent);
-
-        os << indent << "Threshold: " << threshold << endl;
-    }
-
-private:
-    MeasurementType threshold;
-    MeasurementType max_error;
-    OutputType m_Output;
-    SizeValueType max_iterations;
-    OptimalThresholdCalculator(const Self&) ITK_DELETE_FUNCTION;
-    void operator=(const Self&) ITK_DELETE_FUNCTION;
-};
-
-template <typename TImage>
-class SegmentedLungFilter {
-public:
-    typedef typename TImage::Pointer InputImagePointer;
-
-    typedef unsigned char SegmentedImagePixelType;
-    typedef itk::Image< SegmentedImagePixelType, 3 > SegmentedImageType;
-    typedef SegmentedImageType::Pointer SegmentedImagePointer;
-
-    typedef BinaryThresholdImageFilter<TImage, SegmentedImageType> BinaryImageFilter;
-    typedef BinaryImageFilter AirFleshSegmentedImage;
-    typedef typename AirFleshSegmentedImage::Pointer AirFleshSegmentedImagePointer;
-
-    typedef itk::Image< SegmentedImagePixelType, 2 > SegmentedSliceImage;
-
-    SegmentedLungFilter(InputImagePointer image): image(image) { }
-
-    typedef ImageToHistogramFilter<TImage> HistogramFilterType;
-    typedef typename HistogramFilterType::HistogramType HistogramType;
-    typedef typename HistogramType::Pointer HistogramPointer;
-    typedef typename HistogramFilterType::Pointer HistogramFilterPointer;
-    typedef typename HistogramFilterType::HistogramSizeType HistogramSizeType;
-    typedef typename HistogramFilterType::HistogramMeasurementType HistogramMeasurementType;
-    /**
-     * Get histogram of input image
-     */
-    HistogramPointer getHistogram() {
-        HistogramFilterPointer filter = HistogramFilterType::New();
-
-        HistogramSizeType size(1);
-        size[0] = 4096; // FIXME: should be more flexible
-        filter->SetInput(image);
-        filter->SetAutoMinimumMaxium(true);
-        filter->setHistogramSize(size);
-
-        filter->SetMarginalScale(10); // FIXME: parameter
-        filter->Update();
-
-        return filter->GetOutput();
-    }
-
-    typedef OptimalThresholdCalculator<HistogramType> ThresholdCalculatorType;
-    /**
-     * Segment air from flesh using an optimal threshold algorithm
-     */
-    AirFleshSegmentedImagePointer segmentAirFromFlesh() {
-        HistogramPointer histogram = getHistogram();
-
-        ThresholdCalculatorType thresholdCalculator(1000);
-        thresholdCalculator->SetInput(histogram);
-        thresholdCalculator->Compute();
-
-        HistogramMeasurementType threshold = thresholdCalculator->GetThreshold();
-
-        AirFleshSegmentedImagePointer flesh = BinaryImageFilter::New();
-        flesh->SetInput(image);
-        flesh->SetLowerThreshold(threshold);
-
-        return flesh;
-    }
-
-    // FIXME: Triple-check this
-    typedef itk::BinaryFillholeImageFilter<SegmentedSliceImage> HoleFillingFilter;
-    typedef SliceBySliceImageFilter<BinaryImageFilter, SegmentedImageType, HoleFillingFilter> SegmentedSliceFilter;
-    typedef typename SegmentedSliceFilter::Pointer SegmentedSliceFilterPointer;
-    typedef SegmentedImageType TorsoSegmentedImage;
-    typedef typename TorsoSegmentedImage::Pointer TorsoSegmentedImagePointer;
-
-    /**
-     * Uses a hole filling algorithm to segment the entire torso
-     */
-    TorsoSegmentedImagePointer segmentTorso(AirFleshSegmentedImagePointer flesh) {
-        SegmentedSliceFilterPointer slices = SegmentedSliceFilter::New();
-
-        TorsoSegmentedImagePointer torso = HoleFillingFilter::New();
-        slices->SetFilter(torso);
-        slices->SetInput(flesh);
-
-        // FIXME: 3d-connected labeling to isolate torso (may not be necessary)
-
-        return torso;
-    }
-
-    typedef BinaryFunctorImageFilter<AirFleshSegmentedImage, TorsoSegmentedImage, LungTorsoSegment<SegmentedImagePixelType>, SegmentedImageType> InitialLungsSegmentedImage;
-    typedef typename InitialLungsSegmentedImage::Pointer InitialLungsSegmentedImagePointer;
-
-    /**
-     * Segment lungs by taking the intersection between air and the torso
-     */
-    InitialLungsSegmentedImagePointer segmentLungsInitial(AirFleshSegmentedImagePointer air, TorsoSegmentedImagePointer torso) {
-        InitialLungsSegmentedImagePointer initialLungs = InitialLungsSegmentedImage::New();
-
-        initialLungs->SetInput1(air);
-        initialLungs->SetInput2(torso);
-        initialLungs->Update(); // FIXME: don't need to update... right?
-
-        return initialLungs;
-    }
-
-    typedef HoleFillingFilter FinalLungsSegmentedImage;
-    typedef typename FinalLungsSegmentedImage::Pointer FinalLungsSegmentedImagePointer;
-
-    /**
-     * Calculate the final lung mask from the initial mask
-     */
-    FinalLungsSegmentedImagePointer segmentLungs(InitialLungsSegmentedImagePointer initialLungs) {
-        FinalLungsSegmentedImagePointer lungs = FinalLungsSegmentedImage::New();
-
-        SegmentedSliceFilterPointer slices = SegmentedSliceFilter::New();
-
-        slices->SetFilter(lungs);
-        slices->SetInput(initialLungs);
-
-        return lungs;
-    }
-
-    FinalLungsSegmentedImagePointer segmentLungs() {
-        // p.16
-        // Segment flesh, this mask is true where there is flesh (!M_i in paper)
-        AirFleshSegmentedImagePointer flesh = segmentAirFromFlesh();
-
-        // Fill holes in the flesh mask to obtain the torso mask
-        // body mask in paper (M_b)
-        TorsoSegmentedImagePointer torso = segmentTorso(flesh);
-
-        // Get the intersection between the torso and the air masks to obtain initial lung mask
-        // Called secondary lung mask in paper (M_s)
-        InitialLungsSegmentedImagePointer initialLungs = segmentLungsInitial(flesh, torso);
-
-        // Fill holes in the initial lung mask to obtain the final lung mask
-        FinalLungsSegmentedImagePointer lungs = segmentLungs(initialLungs); 
-
-        return lungs;
-    }
-protected:
-    InputImagePointer image;
-};
-
+//typedef typename TImage::ConstPointer ConstInputImagePointer;
 
 int usage(char * prog) {
     cerr << "Usage: " << prog << " DICOM_DIR" << endl;
@@ -327,12 +68,183 @@ int main(int argc, char ** argv) {
 
     string dicom_path = argv[argc - 1];
 
+    int MultiThreshold[10] = {-600, -550, -500, -450, -400, -350, -300, -250, -200, -150};
+
+    int max_iterations =  10;
+
+    unsigned int Dimension = 2;
+    unsigned int radius = 1;
+
+    typedef signed int InputPixelType;
+    typedef unsigned char OutputPixelType;
+
+    typedef signed short DICOMPixelType;
+    typedef itk::Image<DICOMPixelType, 3> DICOMImageType;
+    typedef DICOMImageType   InputImageType;
+    typedef itk::Image< OutputPixelType, 3 >   OutputImageType;
+
+    typedef itk::BinaryThresholdImageFilter< InputImageType, OutputImageType > ThresholdFilterType;
+
+    typedef std::vector<ThresholdFilterType::Pointer> ThresholdVector;
+    ThresholdVector  Tvector;
+
+    //For Erosion
+    typedef itk::FlatStructuringElement<2> StructuringElementType;
+    StructuringElementType::RadiusType elementRadius;
+    elementRadius.Fill(radius);
+
+    StructuringElementType structuringElement = StructuringElementType::Box(elementRadius);
+
+    typedef itk::BinaryErodeImageFilter <InputImageType, InputImageType, StructuringElementType>
+        BinaryErodeImageFilterType;
+
+    const PixelType OutsideValue = static_cast<PixelType>( 0 );
+    const PixelType InsideValue = static_cast<PixelType>( 255 );
+
     // read the DICOM image series and print out the number of slices.
-    try {
+    try 
+    {
         ReaderType::Pointer reader = ReaderType::New();
         reader = utility::readDicomImageSeries(dicom_path);
 
+        DICOMImageType::Pointer image = reader->GetOutput();
 
+	typename DICOMImageType::SpacingType spacing = image->GetSpacing();
+
+	// Calculate minimum nodule size in integer coordinates
+	int minNoduleSize[3]; 
+	for (int i = 0; i < 3; i++) {
+		minNoduleSize[i] = 4 /* mm */ / spacing[i];
+	}
+
+	int maxNoduleSize[3]; 
+	for (int i = 0; i < 3; i++) {
+		maxNoduleSize[i] = 30 /* mm */ / spacing[i];
+	}
+
+        typedef SegmentedLungFilter<DICOMImageType> LungFilter;
+        typename LungFilter::Pointer lungs = LungFilter::New();
+        typedef typename LungFilter::OutputImageType SegmentedLungImage;
+        lungs->SetInput(image);
+        lungs->Update();
+
+        /* Attemp erosion
+
+           BinaryErodeImageFilterType::Pointer erodeFilter = BinaryErodeImageFilterType::New();
+           erodeFilter->SetInput(lungs->Update);
+           erodeFilter->SetKernel(structuringElement);
+           erodeFilter->SetErodeValue(255);*/
+
+        typedef itk::MaskImageFilter<DICOMImageType, typename LungFilter::OutputImageType, DICOMImageType > MaskedLungImage;
+        typedef typename MaskedLungImage::Pointer MaskedLungImagePointer;
+
+        MaskedLungImagePointer maskedImage = MaskedLungImage::New();
+        maskedImage->SetInput(image);
+        maskedImage->SetOutsideValue(itk::NumericTraits<DICOMPixelType>::min());
+        maskedImage->SetMaskImage(lungs->GetOutput());
+        maskedImage->Update();
+
+        typedef itk::BinaryBallStructuringElement<unsigned char, 3> StructuringElementType;
+        StructuringElementType openingElement;
+        openingElement.SetRadius(1);
+        openingElement.CreateStructuringElement();
+
+
+
+        for (int i = 0; i < max_iterations; i++)
+        {
+            const PixelType LowerThreshold = static_cast<PixelType>(MultiThreshold[i]);
+
+            ThresholdFilterType::Pointer thresholder = ThresholdFilterType::New();
+            thresholder->SetInput( maskedImage->GetOutput() );
+
+            thresholder->SetLowerThreshold( LowerThreshold );
+
+            thresholder->SetOutsideValue( OutsideValue );
+            thresholder->SetInsideValue( InsideValue );
+
+            thresholder->Update();
+
+            typedef itk::BinaryMorphologicalOpeningImageFilter<typename ThresholdFilterType::OutputImageType, typename ThresholdFilterType::OutputImageType, StructuringElementType> OpeningFilter;
+            typedef typename OpeningFilter::Pointer OpeningFilterPointer;
+
+            OpeningFilterPointer filter = OpeningFilter::New();
+            filter->SetInput(thresholder->GetOutput());
+            filter->SetKernel(openingElement);
+            filter->Update();
+
+            typedef itk::BinaryImageToLabelMapFilter<typename OpeningFilter::OutputImageType> LabelFilter;
+            typedef typename LabelFilter::Pointer LabelFilterPointer;
+
+            typedef itk::LabelObject<long unsigned int, OpeningFilter::OutputImageType::ImageDimension > LabelObjectType;
+            typedef itk::LabelMap<LabelObjectType> LabelMap;
+            typedef typename LabelMap::Pointer LabelMapPointer;
+
+            LabelFilterPointer labelFilter = LabelFilter::New();
+            labelFilter->SetInput(filter->GetOutput());
+            labelFilter->Update();
+
+            LabelMapPointer map = labelFilter->GetOutput();
+
+            // FIXME: i shadows other i
+            // XXX: i = 0 is the background
+            for (int i = 1; i < map->GetNumberOfLabelObjects(); i++) {
+                auto label = map->GetLabelObject(i);
+
+                // Manually calculate bounds
+                // FIXME: 99% certain itk already includes functionality for this
+                int min[3] = {999999, 999999, 999999};
+                int max[3] = {-999999, -999999, -999999};
+                for(unsigned int j = 0; j < label->Size(); j++) {
+                    auto index = label->GetIndex(j);
+
+                    for (int k = 0; k < 3; k++) {
+                        if (index[k] < min[k]) {
+                            min[k] = index[k];
+                        }
+                        if (index[k] > max[k]) {
+                            max[k] = index[k];
+                        }
+                    }
+                }
+
+                int mid[3];
+                int size[3];
+
+                for (int j = 0; j < 3; j++) {
+                    size[j] = max[j] - min[j];
+                    mid[j] = (min[j] + max[j]) / 2;
+                }
+
+		bool tooSmall = false; // XXX: dumb way to break out of outer loop
+		for (int j = 0; j < 3; j++) {
+			if (size[j] < minNoduleSize[j]) {
+				tooSmall = true;
+			}
+		}
+		if (tooSmall) {
+			continue;
+		}
+
+		bool tooBig = false;
+		for (int j = 0; j < 3; j++) {
+			if (size[j] > maxNoduleSize[j]) {
+				tooBig = true;
+			}
+		}
+		if (tooBig) {
+			continue;
+		}
+
+                // Output point to stdout
+                std::cout << mid[0] << ',' << mid[1] << ',' << mid[2] << ' ';
+                std::cout << size[0] << ", " << size[1] << ", " << size[2] << std::endl;
+            }
+
+#           ifdef DISPLAY_SEGMENTED_IMAGES
+            displaySlice<SegmentedLungImage>(filter->GetOutput(), 2, 269 - 51);
+#           endif
+        }
     }
     catch (ExceptionObject &ex) {
         cerr << "The program encountered an exception: " << ex << endl;
